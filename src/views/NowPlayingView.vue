@@ -321,7 +321,6 @@ function onProgressDown(e: MouseEvent) {
 .np-lyrics {
   width: 100%;
   max-width: 500px;
-  min-height: 260px;
   max-height: 320px;
   overflow: hidden;
   border-radius: var(--radius-lg);
