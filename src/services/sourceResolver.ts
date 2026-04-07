@@ -206,6 +206,8 @@ export async function resolveLyric(
   const source = track.source || 'kw'
   const songId = track.sourceId || track.songmid || track.hash || track.id
 
+  console.log(`[SourceResolver] resolveLyric: source=${source}, id=${songId}, title=${track.title}`)
+
   const musicInfo: LxMusicInfo = {
     id: songId,
     songmid: track.songmid || songId,
@@ -230,15 +232,27 @@ export async function resolveLyric(
       // Only skip if capability explicitly EXCLUDES lyric actions (future-proofing).
       // Previously we skipped when !cap.actions.includes('lyric'), which was too strict.
 
+      console.log(`[SourceResolver] Trying plugin ${plugin.name} getLyric for "${track.title}" (source=${source})`)
       const result = await engine.getLyric(musicInfo)
-      if (result && result.lyric) return result
+      if (result && result.lyric) {
+        console.log(`[SourceResolver] Got lyrics from plugin ${plugin.name}: ${result.lyric.substring(0, 60)}...`)
+        return result
+      }
+      console.log(`[SourceResolver] Plugin ${plugin.name} returned no lyrics for "${track.title}"`)
     } catch (e) {
       console.warn(`[SourceResolver] Lyric resolve failed for ${plugin.name}:`, e)
     }
   }
 
   // Fallback: fetch lyrics from public API
-  return fetchLyricFromPublicApi(musicInfo)
+  console.log(`[SourceResolver] All plugins failed for lyrics, trying public API fallback (source=${source})`)
+  const publicResult = await fetchLyricFromPublicApi(musicInfo)
+  if (publicResult?.lyric) {
+    console.log(`[SourceResolver] Got lyrics from public API: ${publicResult.lyric.substring(0, 60)}...`)
+  } else {
+    console.log(`[SourceResolver] Public API also returned no lyrics for source=${source}`)
+  }
+  return publicResult
 }
 
 // ===== Cover Resolution =====

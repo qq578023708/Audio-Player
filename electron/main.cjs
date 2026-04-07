@@ -86,14 +86,19 @@ function kwBoardDecodeData(base64Result) {
 
 /**
  * Find matching proxy rule for a given request path.
+ * Uses LONGEST prefix match to avoid ambiguity (e.g. /api/kuwo-m must not
+ * match the shorter /api/kuwo prefix).
  */
 function findProxyRule(requestPath) {
+  let bestMatch = null
+  let bestLen = 0
   for (const rule of PROXY_RULES) {
-    if (requestPath.startsWith(rule.prefix)) {
-      return rule
+    if (requestPath.startsWith(rule.prefix) && rule.prefix.length > bestLen) {
+      bestMatch = rule
+      bestLen = rule.prefix.length
     }
   }
-  return null
+  return bestMatch
 }
 
 /**
@@ -171,6 +176,7 @@ function proxyRequest(reqPath, method, headers, body) {
     if (reqPath.startsWith('/api/cors-proxy')) {
       let targetUrl = null
       let corsMethod = method
+      let customHeaders = {}
       if (corsMethod === 'GET') {
         const url = new URL(reqPath, 'http://localhost')
         targetUrl = url.searchParams.get('url')
@@ -179,12 +185,24 @@ function proxyRequest(reqPath, method, headers, body) {
           const parsed = JSON.parse(body.toString())
           targetUrl = parsed.url
           corsMethod = parsed.method || corsMethod
+          // CRITICAL: Extract custom headers from the proxy body
+          // Plugins often set Referer, Cookie, etc. via lx.request headers
+          if (parsed.headers && typeof parsed.headers === 'object') {
+            customHeaders = parsed.headers
+          }
         } catch { /* ignore */ }
       }
       if (!targetUrl) { reject(new Error('Missing target url')); return }
 
       const fetchHeaders = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
       if (headers['content-type']) fetchHeaders['Content-Type'] = headers['content-type']
+      // Forward custom headers from the proxy body (e.g. Referer, Cookie)
+      for (const [k, v] of Object.entries(customHeaders)) {
+        if (v && typeof v === 'string') {
+          fetchHeaders[k] = v
+        }
+      }
+      console.log(`[proxy] cors-proxy → ${corsMethod} ${targetUrl.substring(0, 100)}, headers: ${Object.keys(fetchHeaders).join(', ')}`)
 
       const req = net.request({ url: targetUrl, method: corsMethod })
       for (const [k, v] of Object.entries(fetchHeaders)) req.setHeader(k, v)
@@ -211,8 +229,17 @@ function proxyRequest(reqPath, method, headers, body) {
     const targetUrl = new URL(backendPath, rule.target)
 
     const reqHeaders = { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    // Rule-level extra headers first (e.g. Referer for music platforms)
     if (rule.extraHeaders) Object.assign(reqHeaders, rule.extraHeaders)
-    if (headers['content-type']) reqHeaders['Content-Type'] = headers['content-type']
+    // Then forward renderer-sent headers (Content-Type, Accept, etc.)
+    // Renderer headers can override rule-level ones if needed
+    for (const [k, v] of Object.entries(headers)) {
+      if (v && typeof v === 'string') {
+        // Normalize header name: content-type → Content-Type
+        const key = k === 'content-type' ? 'Content-Type' : k
+        reqHeaders[key] = v
+      }
+    }
 
     const req = net.request({ url: targetUrl.toString(), method })
     for (const [k, v] of Object.entries(reqHeaders)) req.setHeader(k, v)

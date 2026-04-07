@@ -29,11 +29,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     if (options.headers) {
       const h = options.headers
       if (h instanceof Headers) {
-        h.forEach((v, k) => { if (k === 'content-type') reqHeaders['content-type'] = v })
+        h.forEach((v, k) => { reqHeaders[k.toLowerCase()] = v })
       } else if (typeof h === 'object') {
-        const lower = (s) => s.toLowerCase()
         for (const [k, v] of Object.entries(h)) {
-          if (lower(k) === 'content-type') reqHeaders['content-type'] = v
+          if (v && typeof v === 'string') {
+            reqHeaders[k.toLowerCase()] = v
+          }
         }
       }
     }

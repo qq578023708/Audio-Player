@@ -573,13 +573,18 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
       return normalizeUrl(result)
     } catch (pluginError) {
       // Plugin handler threw (e.g. "get url error") — try fallback:
-      // Extract URL from the last lx.request response body if it contains one
+      // Extract URL (and lyrics!) from the last lx.request response body
       console.warn(`[LxEngine:${plugin.name}] Plugin handler failed, trying fallback URL extraction...`)
       for (let i = state.lastResponseBodies.length - 1; i >= 0; i--) {
         const fallbackUrl = tryExtractUrlFromBody(state.lastResponseBodies[i])
         if (fallbackUrl) {
           console.log(`[LxEngine:${plugin.name}] Fallback URL extracted from lx.request response`)
-          return { url: fallbackUrl }
+          // Also try to extract lyrics from the same response body
+          const fallbackLyric = tryExtractLyricFromBody(state.lastResponseBodies[i])
+          if (fallbackLyric) {
+            console.log(`[LxEngine:${plugin.name}] Fallback lyrics also extracted from lx.request response`)
+          }
+          return { url: fallbackUrl, lyricResult: fallbackLyric || undefined }
         }
       }
       throw pluginError // Re-throw if fallback also failed
@@ -875,10 +880,30 @@ export function md5(input: string): string {
   return tohex([(a0>>>0)&0xff,(a0>>>8)&0xff,(a0>>>16)&0xff,(a0>>>24)&0xff,(b0>>>0)&0xff,(b0>>>8)&0xff,(b0>>>16)&0xff,(b0>>>24)&0xff,(c0>>>0)&0xff,(c0>>>8)&0xff,(c0>>>16)&0xff,(c0>>>24)&0xff,(d0>>>0)&0xff,(d0>>>8)&0xff,(d0>>>16)&0xff,(d0>>>24)&0xff])
 }
 
-// ===== Fallback URL extractor =================================================
+// ===== Fallback URL + Lyrics extractor ==========================================
 // When a plugin's request handler fails (e.g. its internal parsing logic throws),
-// we can still salvage the URL from the raw lx.request response body.
-// Common patterns: { code: 200, data: { url: "..." } }, { url: "..." }, etc.
+// we can still salvage the URL and lyrics from the raw lx.request response body.
+
+/**
+ * Extract lyrics from a plugin response body.
+ * Common patterns: { data: { lrc: "..." } }, { data: { lyric: "..." } }, { lrc: "..." }
+ */
+function tryExtractLyricFromBody(body: string): SourceLyricResult | null {
+  try {
+    const json = JSON.parse(body)
+    // Check nested data object first (most common in 聚合API responses)
+    const dataObj = json.data && typeof json.data === 'object' ? json.data as Record<string, any> : null
+    const lyric = dataObj?.lrc || dataObj?.lyric || dataObj?.lrcText
+      || json.lrc || json.lyric || json.lrcText
+    if (!lyric || typeof lyric !== 'string') return null
+    return {
+      lyric,
+      tlyric: dataObj?.tlyric || dataObj?.tlrc || json.tlyric || json.tlrc || undefined,
+    }
+  } catch {
+    return null
+  }
+}
 
 function tryExtractUrlFromBody(body: string): string | null {
   try {

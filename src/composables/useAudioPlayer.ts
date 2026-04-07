@@ -175,7 +175,9 @@ export function useAudioPlayer() {
         track.lrc = result.lyric
         if (result.tlyric) track.tlyric = result.tlyric
         currentTrack.value = { ...track }
+        console.log(`[AudioPlayer] Lyrics bundled with musicUrl response: ${result.lyric.substring(0, 60)}...`)
       } else {
+        console.log(`[AudioPlayer] No lyrics in musicUrl response, fetching separately...`)
         await fetchTrackLyrics(track, plugins)
       }
       playWithUrl(result.url, track)
@@ -270,14 +272,18 @@ export function useAudioPlayer() {
 
   async function fetchTrackLyrics(track: Track, plugins: ParsedSourcePlugin[]) {
     try {
+      console.log(`[AudioPlayer] fetchTrackLyrics: "${track.title}" (source=${track.source})`)
       const result = await resolveLyric(track, plugins)
       if (result?.lyric) {
         track.lrc = result.lyric
         if (result.tlyric) track.tlyric = result.tlyric
         currentTrack.value = { ...track }
+        console.log(`[AudioPlayer] Lyrics set for "${track.title}", length=${result.lyric.length}`)
+      } else {
+        console.log(`[AudioPlayer] No lyrics found for "${track.title}"`)
       }
-    } catch {
-      // Lyrics optional
+    } catch (e) {
+      console.warn('[AudioPlayer] fetchTrackLyrics failed:', e)
     }
   }
 
