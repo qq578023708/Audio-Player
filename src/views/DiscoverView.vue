@@ -25,12 +25,12 @@
       </div>
     </div>
 
-    <!-- Search results -->
-    <section class="section" v-if="searchResults.length > 0">
+    <!-- Search results header (always visible once searched) -->
+    <section class="section" v-if="hasSearched">
       <div class="section-header">
         <h2 class="section-title">
           搜索结果
-          <span class="search-count">（{{ searchResults.length }} 首）</span>
+          <span class="search-count" v-if="searchResults.length > 0">（{{ searchResults.length }} 首）</span>
         </h2>
         <div class="search-source-filter">
           <button
@@ -44,7 +44,15 @@
           </button>
         </div>
       </div>
-      <div class="track-table">
+      <!-- Search error messages per source -->
+      <div class="search-errors" v-if="searchErrors.length > 0">
+        <div class="search-error-item" v-for="err in searchErrors" :key="err.source">
+          <SvgIcon name="alert-circle" :size="13" />
+          {{ SOURCE_NAMES[err.source] || err.source }}: {{ err.message }}
+        </div>
+      </div>
+      <!-- Track list -->
+      <div class="track-table" v-if="searchResults.length > 0">
         <div
           v-for="(item, index) in searchResults"
           :key="`${item.source}_${item.id}`"
@@ -83,8 +91,11 @@
         <SvgIcon name="loader" :size="14" class="spinning" />
         {{ player.resolveStatus.value }}
       </div>
-      <div class="search-status error" v-else-if="player.error.value">
-        {{ player.error.value }}
+      <!-- No results for this source -->
+      <div class="search-no-result" v-if="searchResults.length === 0 && !isSearching">
+        <SvgIcon name="search" :size="32" />
+        <p>未找到相关结果</p>
+        <p class="hint">请尝试其他关键词或切换平台</p>
       </div>
     </section>
 
@@ -96,14 +107,8 @@
       </div>
     </section>
 
-    <!-- Search no results -->
-    <section class="section" v-if="hasSearched && searchResults.length === 0 && !isSearching">
-      <div class="search-no-result">
-        <SvgIcon name="search" :size="32" />
-        <p>未找到相关结果</p>
-        <p class="hint">请尝试其他关键词，或确认音源插件已启用</p>
-      </div>
-    </section>
+    <!-- Search no results (shown within search results section above when empty) -->
+    <!-- Removed duplicate empty state — handled inline in the hasSearched section -->
 
     <!-- Music categories -->
     <section class="section">
@@ -245,8 +250,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { usePlaylistStore } from '@/stores/playlist'
@@ -259,6 +264,7 @@ const player = useAudioPlayer()
 const store = usePlaylistStore()
 const sourceStore = useSourceStore()
 const router = useRouter()
+const route = useRoute()
 
 // Search state
 const searchKeyword = ref('')
@@ -267,13 +273,12 @@ const searchSource = ref<MusicSource | 'all'>('all')
 const isSearching = ref(false)
 const hasSearched = ref(false)
 const lastPlayedSearchId = ref('')
+const searchErrors = ref<Array<{ source: MusicSource; message: string }>>([])
 
 const searchSourceOptions = [
   { label: '全部', value: 'all' as const },
-  { label: '酷我', value: 'kw' as MusicSource },
-  { label: '酷狗', value: 'kg' as MusicSource },
   { label: '网易云', value: 'wy' as MusicSource },
-  { label: 'QQ', value: 'tx' as MusicSource },
+  { label: '咪咕', value: 'mg' as MusicSource },
 ]
 
 async function handleSearch() {
@@ -283,18 +288,38 @@ async function handleSearch() {
   isSearching.value = true
   hasSearched.value = true
   searchResults.value = []
+  searchErrors.value = []
 
   try {
     const source = searchSource.value === 'all' ? undefined : searchSource.value as MusicSource
-    const results = await searchSongs(keyword, source, 1, 50)
+    const { results, errors } = await searchSongs(keyword, source, 1, 50)
     searchResults.value = results
+    searchErrors.value = errors
   } catch (e) {
     console.error('[DiscoverView] Search failed:', e)
     searchResults.value = []
+    searchErrors.value = []
   }
 
   isSearching.value = false
 }
+
+// Watch for URL query parameter changes (from Sidebar search)
+watch(() => route.query.q, (q) => {
+  if (q && typeof q === 'string') {
+    searchKeyword.value = q
+    handleSearch()
+  }
+})
+
+// Handle initial navigation with query param
+onMounted(() => {
+  const q = route.query.q
+  if (q && typeof q === 'string') {
+    searchKeyword.value = q
+    handleSearch()
+  }
+})
 
 function isPlayingSearchItem(item: SearchTrackItem): boolean {
   return lastPlayedSearchId.value === `${item.source}_${item.id}`
@@ -625,6 +650,27 @@ const demoGradients = [
   padding: 40px;
   color: var(--text-muted);
   font-size: 14px;
+}
+
+.search-errors {
+  margin-bottom: 12px;
+}
+
+.search-error-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: rgba(255, 200, 0, 0.06);
+  border-radius: var(--radius-sm);
+  margin-bottom: 4px;
+}
+
+.search-error-item svg {
+  flex-shrink: 0;
+  color: #f59e0b;
 }
 
 .search-no-result {

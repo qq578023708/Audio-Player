@@ -14,8 +14,8 @@
         <span>添加</span>
       </button>
     </div>
-    <div v-if="player.error.value" class="error-msg">
-      {{ player.error.value }}
+    <div v-if="localError" class="error-msg">
+      {{ localError }}
     </div>
   </div>
 </template>
@@ -27,10 +27,12 @@ import { useAudioPlayer } from '@/composables/useAudioPlayer'
 
 const player = useAudioPlayer()
 const url = ref('')
+const localError = ref('')
 
 function handleAdd() {
   const trimmed = url.value.trim()
   if (!trimmed) return
+  localError.value = ''
 
   try {
     new URL(trimmed) // validate URL
@@ -43,7 +45,7 @@ function handleAdd() {
       player.playUrl('https://' + trimmed)
       url.value = ''
     } catch {
-      player.error.value = '请输入有效的 URL 地址'
+      localError.value = '请输入有效的 URL 地址'
     }
   }
 }

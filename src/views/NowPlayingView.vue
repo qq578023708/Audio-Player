@@ -54,7 +54,7 @@
 
       <!-- Audio visualizer -->
       <div class="np-visualizer">
-        <AudioVisualizer :bar-count="30" :is-playing="player.isPlaying.value" :height="24" />
+        <AudioVisualizer :bar-count="40" :is-playing="player.isPlaying.value" :height="48" />
       </div>
 
       <!-- Lyrics -->
@@ -314,12 +314,15 @@ function onProgressDown(e: MouseEvent) {
 
 .np-visualizer {
   margin-top: 4px;
+  width: 50%;
+  max-width: 250px;
 }
 
 .np-lyrics {
   width: 100%;
   max-width: 500px;
-  max-height: 240px;
+  min-height: 260px;
+  max-height: 320px;
   overflow: hidden;
   border-radius: var(--radius-lg);
   background: rgba(0, 0, 0, 0.3);

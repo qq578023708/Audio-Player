@@ -72,7 +72,7 @@
       </div>
     </div>
 
-    <!-- Right: Volume + EQ -->
+    <!-- Right: Volume + Device + EQ -->
     <div class="bar-right">
       <button class="bar-ctrl" :title="player.isMuted.value ? '取消静音' : '静音'" @click="player.toggleMute()">
         <SvgIcon
@@ -90,6 +90,28 @@
           @input="(e) => player.setVolume(Number((e.target as HTMLInputElement).value) / 100)"
         />
       </div>
+      <!-- Audio Output Device Selector -->
+      <div class="device-selector" v-if="showDeviceMenu" ref="deviceMenuRef">
+        <div class="device-menu">
+          <div class="device-menu-header">音频输出设备</div>
+          <div
+            v-for="device in player.audioOutputDevices.value"
+            :key="device.deviceId"
+            class="device-item"
+            :class="{ active: device.deviceId === player.selectedDeviceId.value }"
+            @click="selectDevice(device.deviceId)"
+          >
+            <SvgIcon :name="device.deviceId === player.selectedDeviceId.value ? 'check' : 'monitor-speaker'" :size="14" />
+            <span class="device-name">{{ device.label }}</span>
+          </div>
+          <div v-if="player.audioOutputDevices.value.length === 0" class="device-empty">
+            未检测到音频设备
+          </div>
+        </div>
+      </div>
+      <button class="bar-ctrl" title="音频输出设备" @click.stop="toggleDeviceMenu">
+        <SvgIcon name="monitor-speaker" :size="16" />
+      </button>
       <button class="bar-ctrl eq-btn" :class="{ active: showEQ }" title="均衡器" @click="toggleEQ">
         <SvgIcon name="settings" :size="16" />
       </button>
@@ -109,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, onMounted, onUnmounted, nextTick } from 'vue'
 import SvgIcon from './SvgIcon.vue'
 import EqualizerPanel from './EqualizerPanel.vue'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
@@ -121,10 +143,38 @@ const store = usePlaylistStore()
 const router = useRouter()
 const progressRef = ref<HTMLElement | null>(null)
 const showEQ = ref(false)
+const showDeviceMenu = ref(false)
+const deviceMenuRef = ref<HTMLElement | null>(null)
 
 const emit = defineEmits<{
   togglePlaylist: []
 }>()
+
+onMounted(() => {
+  // Enumerate audio devices on mount (may need user gesture on some browsers)
+  player.refreshAudioDevices()
+  // Close device menu on outside click
+  document.addEventListener('click', onOutsideClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onOutsideClick)
+})
+
+function onOutsideClick(e: MouseEvent) {
+  if (showDeviceMenu.value && deviceMenuRef.value && !deviceMenuRef.value.contains(e.target as Node)) {
+    showDeviceMenu.value = false
+  }
+}
+
+function toggleDeviceMenu() {
+  showDeviceMenu.value = !showDeviceMenu.value
+}
+
+async function selectDevice(deviceId: string) {
+  await player.setAudioOutputDevice(deviceId)
+  showDeviceMenu.value = false
+}
 
 const isFav = computed(() => {
   if (!player.currentTrack.value) return false
@@ -491,6 +541,70 @@ function onProgressTouch(e: TouchEvent) {
 /* EQ button */
 .eq-btn.active {
   color: var(--accent);
+}
+
+/* Audio Output Device Selector */
+.device-selector {
+  position: absolute;
+  bottom: calc(var(--player-bar-height) + 4px);
+  right: 80px;
+  z-index: 300;
+}
+
+.device-menu {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.device-menu-header {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 6px 10px 4px;
+  white-space: nowrap;
+}
+
+.device-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 12px;
+  transition: all var(--transition-fast);
+}
+
+.device-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.device-item.active {
+  color: var(--accent);
+  background: rgba(255, 106, 0, 0.08);
+}
+
+.device-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.device-empty {
+  padding: 12px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
 }
 
 /* EQ Panel */

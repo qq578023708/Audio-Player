@@ -1,10 +1,61 @@
-const { app, BrowserWindow, globalShortcut, Menu, ipcMain, net } = require('electron')
+const { app, BrowserWindow, globalShortcut, Menu, ipcMain, net, Tray, nativeImage } = require('electron')
 const path = require('path')
 const { URL } = require('url')
 const fs = require('fs')
 
 const isDev = !app.isPackaged
 const VITE_DEV_SERVER_URL = 'http://localhost:5173'
+
+// ====== Generate a tray icon at runtime (16x16 PNG with music note) ======
+// Avoids needing an icon file — creates an orange circle with a music note shape.
+function generateTrayIcon(size = 16) {
+  // Create a canvas-like raw pixel buffer: BGRA format for nativeImage
+  // We'll create a simple filled circle with a play triangle
+  const scale = 2  // Retina support
+  const s = size * scale
+  const buf = Buffer.alloc(s * s * 4, 0) // RGBA
+
+  const cx = s / 2, cy = s / 2, r = s / 2 - 1
+  // Orange fill: #ff6a00 → RGBA(255, 106, 0, 255)
+  const fillR = 255, fillG = 106, fillB = 0, fillA = 255
+  // Dark fill for the play icon: white
+  const iconR = 255, iconG = 255, iconB = 255, iconA = 255
+
+  function setPixel(x, y, red, green, blue, alpha) {
+    if (x < 0 || x >= s || y < 0 || y >= s) return
+    const idx = (y * s + x) * 4
+    buf[idx] = red
+    buf[idx + 1] = green
+    buf[idx + 2] = blue
+    buf[idx + 3] = alpha
+  }
+
+  // Draw filled circle
+  for (let y = 0; y < s; y++) {
+    for (let x = 0; x < s; x++) {
+      const dx = x - cx, dy = y - cy
+      if (dx * dx + dy * dy <= r * r) {
+        setPixel(x, y, fillR, fillG, fillB, fillA)
+      }
+    }
+  }
+
+  // Draw a play triangle in the center (pointing right)
+  const triCx = cx + 1, triCy = cy, triSize = s * 0.3
+  for (let y = 0; y < s; y++) {
+    for (let x = 0; x < s; x++) {
+      const dx = x - triCx, dy = y - triCy
+      // Triangle: pointing right
+      const inTri = (dx >= -triSize * 0.4 && dx <= triSize * 0.5) &&
+                    (Math.abs(dy) <= triSize * 0.5 * (1 - (dx + triSize * 0.4) / (triSize * 0.9)))
+      if (inTri) {
+        setPixel(x, y, iconR, iconG, iconB, iconA)
+      }
+    }
+  }
+
+  return nativeImage.createFromBuffer(buf, { width: s, height: s, scaleFactor: scale })
+}
 
 // ====== File-based logging for packaged builds ======
 // In packaged mode, console.log goes nowhere visible, so we write to a log file.
@@ -260,8 +311,37 @@ function proxyRequest(reqPath, method, headers, body) {
   })
 }
 
+let mainWindow = null
+let tray = null
+
+function createTray() {
+  const icon = generateTrayIcon(16)
+  tray = new Tray(icon)
+  tray.setToolTip('AudioFlow Player')
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: '▶ 显示主窗口', click: () => showWindow() },
+    { type: 'separator' },
+    { label: '✕ 退出程序', click: () => { app.isQuitting = true; app.quit() } },
+  ])
+  tray.setContextMenu(contextMenu)
+
+  // Double-click (or single-click on Linux) to show window
+  tray.on('double-click', () => showWindow())
+  if (process.platform === 'linux') {
+    tray.on('click', () => showWindow())
+  }
+}
+
+function showWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (!mainWindow.isVisible()) mainWindow.show()
+  mainWindow.focus()
+}
+
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1100,
     height: 750,
     minWidth: 400,
@@ -341,7 +421,15 @@ function createWindow() {
       mainWindow.maximize()
     }
   })
-  ipcMain.on('window-close', () => mainWindow.close())
+  // Close button → minimize to tray instead of quitting
+  ipcMain.on('window-close', () => {
+    mainWindow.hide()
+  })
+  // Force quit (from tray menu or app.quit)
+  ipcMain.on('app-quit', () => {
+    app.isQuitting = true
+    app.quit()
+  })
   ipcMain.handle('window-is-maximized', () => mainWindow.isMaximized())
 
   // Notify renderer when maximize state changes
@@ -350,6 +438,14 @@ function createWindow() {
   })
   mainWindow.on('unmaximize', () => {
     mainWindow.webContents.send('window-state-changed', false)
+  })
+
+  // Intercept window close → hide to tray
+  mainWindow.on('close', (event) => {
+    if (!app.isQuitting) {
+      event.preventDefault()
+      mainWindow.hide()
+    }
   })
 
   // API proxy IPC handler
@@ -404,19 +500,24 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow()
+  createTray()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow()
+    } else {
+      showWindow()
     }
   })
 })
 
 app.on('window-all-closed', () => {
-  globalShortcut.unregisterAll()
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // Don't quit on window-all-closed — we have a tray icon
+  // The user can quit from the tray context menu
+})
+
+app.on('before-quit', () => {
+  app.isQuitting = true
 })
 
 app.on('will-quit', () => {

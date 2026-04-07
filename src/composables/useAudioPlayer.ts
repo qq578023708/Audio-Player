@@ -4,6 +4,80 @@ import type { Track, MusicQuality, ParsedSourcePlugin, SourceResolveResult } fro
 import { resolveWithAutoSwitch, resolveLyric, searchItemToTrack } from '@/services/sourceResolver'
 import { getEqualizer } from '@/services/audioEffects'
 
+// ====== Audio Output Device Management ======
+interface AudioOutputDevice {
+  deviceId: string
+  label: string
+}
+
+const audioOutputDevices = ref<AudioOutputDevice[]>([])
+const selectedDeviceId = ref<string>('')
+
+async function enumerateAudioDevices(): Promise<AudioOutputDevice[]> {
+  try {
+    if (!navigator.mediaDevices?.enumerateDevices) return []
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const audioOutputs = devices.filter(d => d.kind === 'audiooutput')
+    return audioOutputs.map(d => ({
+      deviceId: d.deviceId,
+      label: d.label || `扬声器 ${audioOutputs.length + 1}`,
+    }))
+  } catch (e) {
+    console.warn('[AudioPlayer] enumerateDevices failed:', e)
+    return []
+  }
+}
+
+async function refreshAudioDevices() {
+  audioOutputDevices.value = await enumerateAudioDevices()
+  // Restore saved device or default to first
+  const saved = localStorage.getItem('audio-output-device')
+  if (saved && audioOutputDevices.value.some(d => d.deviceId === saved)) {
+    selectedDeviceId.value = saved
+  } else if (audioOutputDevices.value.length > 0) {
+    selectedDeviceId.value = audioOutputDevices.value[0].deviceId
+  }
+}
+
+async function setAudioOutputDevice(deviceId: string) {
+  selectedDeviceId.value = deviceId
+  try { localStorage.setItem('audio-output-device', deviceId) } catch { /* ignore */ }
+  await applySinkId(deviceId)
+}
+
+async function applySinkId(deviceId: string) {
+  // Howler.js html5 mode uses HTMLAudioElement internally
+  // We need to access the underlying audio element to call setSinkId
+  const html5Audio = Howler._html5AudioPool?.[0] || Howler.ctx?.createMediaElementSource?.({})?.mediaStream?.getAudioTracks?.()[0]
+  
+  // Alternative: access via Howler's internal audio pool
+  // Howler with html5: true creates Audio elements, stored in _audioPool
+  if (howlInstance) {
+    try {
+      // Howler 2.x with html5 mode: _audio property holds the Audio element
+      const audioEl = (howlInstance as any)._audio
+      if (audioEl && typeof audioEl.setSinkId === 'function') {
+        await audioEl.setSinkId(deviceId)
+        console.log(`[AudioPlayer] Output device set to: ${deviceId}`)
+        return
+      }
+      // Try accessing via _sounds array (Howler internal)
+      const sounds = (howlInstance as any)._sounds
+      if (sounds?.length > 0 && sounds[0]._node) {
+        const node = sounds[0]._node
+        if (typeof node.setSinkId === 'function') {
+          await node.setSinkId(deviceId)
+          console.log(`[AudioPlayer] Output device set to: ${deviceId}`)
+          return
+        }
+      }
+      console.warn('[AudioPlayer] Could not find audio element to set sinkId')
+    } catch (e) {
+      console.warn('[AudioPlayer] setSinkId failed:', e)
+    }
+  }
+}
+
 // Module-level source plugin cache (set by SourceView via setPlayerSourcePlugins)
 let playerPlugins: ParsedSourcePlugin[] = []
 let playerAutoSwitch = true
@@ -46,6 +120,7 @@ const currentResolveInfo = ref<SourceResolveResult | null>(null)
 
 let howlInstance: Howl | null = null
 let seekInterval: ReturnType<typeof setInterval> | null = null
+let playVersion = 0 // Incremented on each play request to invalidate stale async ops
 
 function clearSeekInterval() {
   if (seekInterval) {
@@ -66,7 +141,12 @@ function startSeekInterval() {
 function stopAndUnload() {
   clearSeekInterval()
   if (howlInstance) {
-    howlInstance.unload()
+    try {
+      howlInstance.stop()   // Must stop before unload — especially in html5 mode
+      howlInstance.unload() // Remove audio element
+    } catch (e) {
+      console.warn('[AudioPlayer] stopAndUnload error:', e)
+    }
     howlInstance = null
   }
   isPlaying.value = false
@@ -116,6 +196,8 @@ export function useAudioPlayer() {
    * Main play function — resolves URL through source plugins if needed
    */
   async function loadAndPlay(track: Track) {
+    playVersion++ // Invalidate any in-flight async operations
+    const myVersion = playVersion
     stopAndUnload()
     isLoading.value = true
     isResolving.value = false
@@ -152,6 +234,7 @@ export function useAudioPlayer() {
    */
   async function resolveAndPlay(track: Track, quality?: MusicQuality) {
     const { plugins } = getSourcePlugins()
+    const myVersion = playVersion // Capture current version
 
     if (plugins.length === 0) {
       isLoading.value = false
@@ -165,6 +248,11 @@ export function useAudioPlayer() {
 
     try {
       const result = await resolveWithAutoSwitch(track, quality || getPreferredQuality(), plugins)
+      // Check if this resolve is still relevant — user may have switched to another song
+      if (playVersion !== myVersion) {
+        console.log(`[AudioPlayer] Discarding stale resolve result (version ${myVersion} != ${playVersion})`)
+        return
+      }
       isResolving.value = false
       currentResolveInfo.value = result
       resolveStatus.value = `${result.pluginName} · ${result.source.toUpperCase()} · ${result.quality}`
@@ -182,6 +270,10 @@ export function useAudioPlayer() {
       }
       playWithUrl(result.url, track)
     } catch (e: any) {
+      if (playVersion !== myVersion) {
+        console.log(`[AudioPlayer] Discarding stale resolve error (version ${myVersion} != ${playVersion})`)
+        return
+      }
       isResolving.value = false
       isLoading.value = false
       const errMsg = e.message || '解析失败'
@@ -205,6 +297,7 @@ export function useAudioPlayer() {
   function playWithUrl(url: string, track: Track) {
     isLoading.value = true
     error.value = null
+    const myVersion = playVersion // Capture version for this playback
 
     howlInstance = new Howl({
       src: [url],
@@ -218,6 +311,8 @@ export function useAudioPlayer() {
         if (track.duration && track.duration > 0) duration.value = track.duration
       },
       onloaderror: (_id, err) => {
+        // Ignore errors from stale (replaced) audio instances
+        if (playVersion !== myVersion) return
         isLoading.value = false
         error.value = `加载失败: ${err}`
         console.error('Howl load error:', err)
@@ -229,6 +324,7 @@ export function useAudioPlayer() {
         }
       },
       onplayerror: (_id, err) => {
+        if (playVersion !== myVersion) return
         isLoading.value = false
         error.value = `播放失败: ${err}`
         console.error('Howl play error:', err)
@@ -244,6 +340,10 @@ export function useAudioPlayer() {
         startSeekInterval()
         // Auto-initialize AudioEqualizer on first play (for real spectrum data)
         getEqualizer().initialize()
+        // Apply selected audio output device if any
+        if (selectedDeviceId.value) {
+          applySinkId(selectedDeviceId.value)
+        }
       },
       onpause: () => {
         isPlaying.value = false
@@ -445,6 +545,8 @@ export function useAudioPlayer() {
     currentTrack, playlist, currentIndex, isPlaying, currentTime, duration,
     volume, isMuted, playMode, isLoading, error, isResolving, resolveStatus,
     currentResolveInfo,
+    // Audio Output Devices
+    audioOutputDevices, selectedDeviceId,
     // Computed
     progress, hasTrack, formattedCurrentTime, formattedDuration,
     // Methods
@@ -455,6 +557,8 @@ export function useAudioPlayer() {
     playTrack, playNext, playPrev, playUrl,
     // Source-aware
     loadAndPlay, resolveAndPlay, playSearchItem, fetchTrackLyrics,
+    // Audio device
+    refreshAudioDevices, setAudioOutputDevice,
     // Lifecycle
     destroy,
   }

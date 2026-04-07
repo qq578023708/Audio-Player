@@ -597,13 +597,21 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
     if (!result) return null
 
     // Normalize various plugin return formats to SourceLyricResult
-    if (typeof result === 'string') return { lyric: result }
+    if (typeof result === 'string') {
+      // Sanity check: real LRC lyrics start with '[' timestamps
+      // "action not support" or other error strings should return null
+      if (result.includes('[') && result.includes(']')) return { lyric: result }
+      console.log(`[LxEngine:${plugin.name}] getLyric returned non-lyric string: "${result.substring(0, 50)}"`)
+      return null
+    }
 
     // Plugin returns object — map common field name variants
     const obj = result as Record<string, any>
+    const lyric = obj.lyric || obj.lrc || obj.lrcText || ''
+    if (!lyric) return null
     return {
-      lyric:  obj.lyric  || obj.lrc    || obj.lrcText || '',
-      tlyric: obj.tlyric || obj.tlrc   || obj.roma    || undefined,
+      lyric,
+      tlyric: obj.tlyric || obj.tlrc || obj.tlryic || obj.roma || undefined,
       rlyric: obj.rlyric || undefined,
       lxlyric: obj.lxlyric || undefined,
     }
@@ -700,8 +708,8 @@ function extractLyricFromResult(obj: Record<string, any>): SourceLyricResult | n
   return {
     lyric,
     tlyric: topLyric
-      ? (obj.tlyric || obj.tlrc || obj.roma || undefined)
-      : (dataObj?.tlyric || dataObj?.tlrc || dataObj?.roma || undefined),
+      ? (obj.tlyric || obj.tlrc || obj.tlryic || obj.roma || undefined)
+      : (dataObj?.tlyric || dataObj?.tlrc || dataObj?.tlryic || dataObj?.roma || undefined),
     rlyric: topLyric
       ? (obj.rlyric || undefined)
       : (dataObj?.rlyric || undefined),
@@ -896,9 +904,13 @@ function tryExtractLyricFromBody(body: string): SourceLyricResult | null {
     const lyric = dataObj?.lrc || dataObj?.lyric || dataObj?.lrcText
       || json.lrc || json.lyric || json.lrcText
     if (!lyric || typeof lyric !== 'string') return null
+    // Per LX Music spec, lyric result may include tlyric, rlyric, lxlyric
     return {
       lyric,
-      tlyric: dataObj?.tlyric || dataObj?.tlrc || json.tlyric || json.tlrc || undefined,
+      tlyric: dataObj?.tlyric || dataObj?.tlrc || dataObj?.tlryic
+        || json.tlyric || json.tlrc || json.tlryic || undefined,
+      rlyric: dataObj?.rlyric || json.rlyric || undefined,
+      lxlyric: dataObj?.lxlyric || json.lxlyric || undefined,
     }
   } catch {
     return null

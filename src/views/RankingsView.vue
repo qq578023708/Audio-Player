@@ -109,9 +109,6 @@
       <SvgIcon name="loader" :size="14" class="spinning" />
       <span>{{ player.resolveStatus.value }}</span>
     </div>
-    <div class="resolve-bar error" v-else-if="player.error.value && !player.isLoading.value">
-      <span>{{ player.error.value }}</span>
-    </div>
   </div>
 </template>
 

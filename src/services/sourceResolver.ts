@@ -27,16 +27,18 @@ const SEARCH_APIS: Record<string, (keyword: string, page: number) => Promise<Sea
 }
 
 /**
- * Search songs across all or specific platform
+ * Search songs across all or specific platform.
+ * Returns results along with per-source error info for UI feedback.
  */
 export async function searchSongs(
   keyword: string,
   source?: MusicSource,
   page: number = 1,
   limit: number = 30
-): Promise<SearchTrackItem[]> {
-  const sources = source ? [source] : ['kw', 'kg', 'wy'] as MusicSource[]
+): Promise<{ results: SearchTrackItem[]; errors: Array<{ source: MusicSource; message: string }> }> {
+  const sources = source ? [source] : ['wy', 'mg'] as MusicSource[]
   const results: SearchTrackItem[] = []
+  const errors: Array<{ source: MusicSource; message: string }> = []
 
   for (const src of sources) {
     try {
@@ -44,6 +46,10 @@ export async function searchSongs(
       if (!apiFn) continue
       
       const items = await apiFn(keyword, page)
+      if (items.length === 0) {
+        // No results is not an error, just skip
+        continue
+      }
       for (const item of items) {
         if (results.length >= limit) break
         results.push(item)
@@ -51,11 +57,13 @@ export async function searchSongs(
       
       if (results.length >= limit) break
     } catch (e) {
-      console.warn(`[SourceResolver] Search failed for ${src}:`, e)
+      const msg = e instanceof Error ? e.message : String(e)
+      console.warn(`[SourceResolver] Search failed for ${src}:`, msg)
+      errors.push({ source: src, message: msg })
     }
   }
 
-  return results
+  return { results, errors }
 }
 
 /**
@@ -197,11 +205,18 @@ export async function resolveWithAutoSwitch(
 // ===== Lyric Resolution =====
 
 /**
- * Resolve lyrics for a track using source plugins
+ * Resolve lyrics for a track.
+ *
+ * Priority order:
+ *   1. Source native API (most reliable, no plugin dependency)
+ *   2. Plugin lyric action (LX Music plugin's dedicated lyric handler)
+ *   3. Plugin bundled lyrics from musicUrl response (already handled in resolveAndPlay)
  */
 export async function resolveLyric(
   track: Track,
-  plugins: ParsedSourcePlugin[]
+  plugins: ParsedSourcePlugin[],
+  /** If caller already has lyrics from musicUrl response, skip plugin lyric action */
+  skipPluginLyric: boolean = false,
 ): Promise<SourceLyricResult | null> {
   const source = track.source || 'kw'
   const songId = track.sourceId || track.songmid || track.hash || track.id
@@ -215,44 +230,50 @@ export async function resolveLyric(
     singer: track.artist,
     album: track.album,
     source,
+    // Extra fields some source APIs need
+    hash: track.hash || undefined,
+    strMediaMid: track.strMediaMid || undefined,
   }
 
-  for (const plugin of plugins) {
-    if (!plugin.enabled || !plugin.sources.includes(source)) continue
-    
-    try {
-      let engine = getLxEngine(plugin.name)
-      if (!engine || !engine.initialized) {
-        engine = await createLxEngine(plugin)
-        if (!engine) continue
-      }
+  // === Priority 1: Source native lyrics API ===
+  console.log(`[SourceResolver] [1/2] Trying source native lyrics API (source=${source})...`)
+  try {
+    const nativeResult = await fetchLyricFromSourceApi(musicInfo, track)
+    if (nativeResult?.lyric) {
+      console.log(`[SourceResolver] Got lyrics from source native API: ${nativeResult.lyric.substring(0, 60)}...`)
+      return nativeResult
+    }
+    console.log(`[SourceResolver] Source native API returned no lyrics`)
+  } catch (e) {
+    console.warn(`[SourceResolver] Source native lyrics API failed:`, e)
+  }
 
-      const cap = engine.capabilities.get(source)
-      // Note: Some plugins handle lyric requests even without declaring it in capabilities.
-      // Only skip if capability explicitly EXCLUDES lyric actions (future-proofing).
-      // Previously we skipped when !cap.actions.includes('lyric'), which was too strict.
+  // === Priority 2: Plugin lyric action ===
+  if (!skipPluginLyric) {
+    for (const plugin of plugins) {
+      if (!plugin.enabled || !plugin.sources.includes(source)) continue
 
-      console.log(`[SourceResolver] Trying plugin ${plugin.name} getLyric for "${track.title}" (source=${source})`)
-      const result = await engine.getLyric(musicInfo)
-      if (result && result.lyric) {
-        console.log(`[SourceResolver] Got lyrics from plugin ${plugin.name}: ${result.lyric.substring(0, 60)}...`)
-        return result
+      try {
+        let engine = getLxEngine(plugin.name)
+        if (!engine || !engine.initialized) {
+          engine = await createLxEngine(plugin)
+          if (!engine) continue
+        }
+
+        console.log(`[SourceResolver] [2/2] Trying plugin ${plugin.name} getLyric for "${track.title}" (source=${source})`)
+        const result = await engine.getLyric(musicInfo)
+        if (result && result.lyric) {
+          console.log(`[SourceResolver] Got lyrics from plugin ${plugin.name}: ${result.lyric.substring(0, 60)}...`)
+          return result
+        }
+      } catch (e) {
+        console.warn(`[SourceResolver] Plugin ${plugin.name} lyric failed:`, e)
       }
-      console.log(`[SourceResolver] Plugin ${plugin.name} returned no lyrics for "${track.title}"`)
-    } catch (e) {
-      console.warn(`[SourceResolver] Lyric resolve failed for ${plugin.name}:`, e)
     }
   }
 
-  // Fallback: fetch lyrics from public API
-  console.log(`[SourceResolver] All plugins failed for lyrics, trying public API fallback (source=${source})`)
-  const publicResult = await fetchLyricFromPublicApi(musicInfo)
-  if (publicResult?.lyric) {
-    console.log(`[SourceResolver] Got lyrics from public API: ${publicResult.lyric.substring(0, 60)}...`)
-  } else {
-    console.log(`[SourceResolver] Public API also returned no lyrics for source=${source}`)
-  }
-  return publicResult
+  console.log(`[SourceResolver] No lyrics found for "${track.title}" (source=${source})`)
+  return null
 }
 
 // ===== Cover Resolution =====
@@ -311,44 +332,26 @@ export function uninitializePlugin(pluginName: string) {
 
 async function searchKuwo(keyword: string, page: number): Promise<SearchTrackItem[]> {
   try {
-    const resp = await fetch(`/api/search-kw/r.s?all=${encodeURIComponent(keyword)}&ft=music&rn=30&pn=${page}&encoding=utf8`)
-    const text = await resp.text()
+    // Use rformat=json&moession=1 to get JSON response with proper UTF-8 encoding
+    const resp = await fetch(`/api/search-kw/r.s?all=${encodeURIComponent(keyword)}&ft=music&rn=30&pn=${page}&encoding=utf8&rformat=json&moession=1`)
+    const data = await resp.json()
     
-    // Kuwo returns a special format
-    const data: any = {}
-    const matches = text.match(/(\w+)=([^&$]*)/g) || []
-    for (const m of matches) {
-      const [k, ...rest] = m.split('=')
-      data[k] = rest.join('=')
-    }
-
-    const abslist = (data.abslist || '[]') as string
     const items: SearchTrackItem[] = []
-    
-    try {
-      const parsed = JSON.parse(abslist.replace(/'/g, '"'))
-      for (const item of (parsed || []).slice(0, 30)) {
-        if (item.MUSICRID) {
-          const id = item.MUSICRID.replace('MUSICRID_', '')
-          items.push({
-            id,
-            source: 'kw',
-            name: item.SONGNAME || item.NAME || '',
-            singer: item.ARTIST || '',
-            album: item.ALBUM || '',
-            albumPic: item.web_albumpic_short || '',
-            duration: item.DURATION ? Math.round(item.DURATION) : undefined,
-          })
-        }
-      }
-    } catch {
-      // Try alternative parsing
-      const ridMatch = text.match(/rid=(\d+)/g) || []
-      const nameMatches = text.match(/SONGNAME=([^&$]*)/g) || []
-      for (let i = 0; i < Math.min(ridMatch.length, nameMatches.length); i++) {
-        const id = ridMatch[i].replace('rid=', '')
-        const name = decodeURIComponent(nameMatches[i].replace('SONGNAME=', ''))
-        items.push({ id, source: 'kw', name, singer: '', album: '', duration: undefined })
+    const abslist = data?.abslist || []
+
+    for (const item of abslist) {
+      if (item.MUSICRID) {
+        const id = item.MUSICRID.replace('MUSICRID_', '').replace('MUSIC_', '')
+        const name = (item.SONGNAME || item.NAME || '').replace(/&nbsp;/g, ' ')
+        items.push({
+          id,
+          source: 'kw',
+          name,
+          singer: (item.ARTIST || '').replace(/&nbsp;/g, ' '),
+          album: (item.NAME || '').replace(/&nbsp;/g, ' '),
+          albumPic: item.web_albumpic_short || '',
+          duration: item.DURATION ? parseInt(item.DURATION) : undefined,
+        })
       }
     }
 
@@ -383,19 +386,36 @@ async function searchKugou(keyword: string, page: number): Promise<SearchTrackIt
 
 async function searchQQ(keyword: string, page: number): Promise<SearchTrackItem[]> {
   try {
-    const resp = await fetch(`/api/search-tx/soso/fcgi-bin/client_search_cp?w=${encodeURIComponent(keyword)}&p=${page}&n=30&format=json`)
+    // Use musicu.fcg POST API (old soso API returns 500)
+    const resp = await fetch('/api/qqmusic/cgi-bin/musicu.fcg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Referer': 'https://y.qq.com/' },
+      body: JSON.stringify({
+        search: {
+          module: 'music.search.SearchCgiService',
+          method: 'DoSearchForQQMusicDesktop',
+          param: {
+            search_type: 0,
+            query: keyword,
+            page_num: page,
+            num_per_page: 30,
+          },
+        },
+      }),
+    })
     const data = await resp.json()
-    
-    return (data?.data?.song?.list || []).map((item: any) => ({
-      id: item.songmid || item.songid?.toString() || '',
+
+    const songList = data?.search?.data?.body?.song?.list || []
+    return songList.map((item: any) => ({
+      id: item.mid || item.id?.toString() || '',
       source: 'tx' as MusicSource,
-      name: item.songname || '',
-      singer: item.singer?.map((s: any) => s.name).join('/') || '',
-      album: item.albumname || '',
-      albumPic: item.albummid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${item.albummid}.jpg` : '',
+      name: item.title || item.name || '',
+      singer: item.singer?.map((s: any) => s.name || s.title).join('/') || '',
+      album: item.album?.name || item.album?.title || '',
+      albumPic: item.album?.mid ? `https://y.gtimg.cn/music/photo_new/T002R300x300M000${item.album.mid}.jpg` : '',
       duration: item.interval || undefined,
-      songmid: item.songmid,
-      strMediaMid: item.strMediaMid,
+      songmid: item.mid || '',
+      strMediaMid: item.file?.media_mid || '',
     }))
   } catch (e) {
     console.warn('[Search] QQ Music search failed:', e)
@@ -429,12 +449,13 @@ async function searchMigu(keyword: string, page: number): Promise<SearchTrackIte
     const data = await resp.json()
     
     return (data?.songResultData?.result || []).map((item: any) => ({
-      id: item.id || '',
+      id: item.copyrightId || item.id || '',
       source: 'mg' as MusicSource,
-      name: item.songName || '',
-      singer: item.singerName || '',
-      album: item.albumName || '',
-      albumPic: item.cover || '',
+      name: item.name || '',
+      singer: (item.singers || []).map((s: any) => s.name).join('/') || '',
+      album: (item.albums || []).map((a: any) => a.name).join('/') || '',
+      albumPic: (item.imgItems || []).find((img: any) => img.imgSizeType === '03')?.img
+            || (item.imgItems || [])[0]?.img || '',
       duration: item.duration ? Math.round(item.duration) : undefined,
     }))
   } catch (e) {
@@ -1200,57 +1221,184 @@ export function songListItemToRouteId(item: SongListItem): string {
   return `${item.source}__${item.id}`
 }
 
-// ===== Fallback Lyric API =====
+// ===== Source Native Lyrics API =====
+// Each platform has its own lyrics endpoint. These are the most reliable source
+// because they don't depend on LX Music plugins.
 
-async function fetchLyricFromPublicApi(musicInfo: LxMusicInfo): Promise<SourceLyricResult | null> {
+/**
+ * Fetch lyrics directly from the source platform's API.
+ * This is the FIRST priority for lyrics — more reliable than plugins.
+ */
+async function fetchLyricFromSourceApi(musicInfo: LxMusicInfo, track?: Track): Promise<SourceLyricResult | null> {
   const source = musicInfo.source
-  const id = musicInfo.songmid || musicInfo.id
+  const id = musicInfo.id
+  const songmid = musicInfo.songmid || id
+  const hash = musicInfo.hash || track?.hash
 
+  switch (source) {
+    case 'kw':
+      return fetchKuwoLyrics(id!)
+    case 'wy':
+      return fetchNeteaseLyrics(id!)
+    case 'tx':
+      return fetchQQLyrics(songmid!)
+    case 'kg':
+      return fetchKugouLyrics(hash || id!)
+    case 'mg':
+      return fetchMiguLyrics(id!)
+    default:
+      console.log(`[SourceResolver] No native lyrics API for source=${source}`)
+      return null
+  }
+}
+
+// ---- Kuwo (酷我) Lyrics API ----
+// Mobile API: returns lrclist array with lineLyric + time
+async function fetchKuwoLyrics(musicId: string): Promise<SourceLyricResult | null> {
   try {
-    // Try Kuwo lyrics (mobile API, no auth needed)
-    if ((source === 'kw') && id) {
-      const resp = await fetch(`/api/kuwo-m/newh5/singles/songinfoandlrc?musicId=${id}&httpsStatus=1`)
-      const data = await resp.json()
-      if (data?.data?.lrclist?.length) {
-        const lrc = data.data.lrclist
-          .map((item: { lineLyric: string; time: string }) => {
-            const minutes = Math.floor(parseFloat(item.time) / 60)
-            const seconds = parseFloat(item.time) % 60
-            const ts = `${minutes.toString().padStart(2, '0')}:${seconds.toFixed(2).padStart(5, '0')}`
-            return `[${ts}]${item.lineLyric}`
-          })
-          .join('\n')
-        return { lyric: lrc }
+    const resp = await fetch(`/api/kuwo-m/newh5/singles/songinfoandlrc?musicId=${musicId}&httpsStatus=1`)
+    const data = await resp.json()
+    if (data?.data?.lrclist?.length) {
+      const lrc = data.data.lrclist
+        .map((item: { lineLyric: string; time: string }) => {
+          const minutes = Math.floor(parseFloat(item.time) / 60)
+          const seconds = parseFloat(item.time) % 60
+          const ts = `${minutes.toString().padStart(2, '0')}:${seconds.toFixed(2).padStart(5, '0')}`
+          return `[${ts}]${item.lineLyric}`
+        })
+        .join('\n')
+      return { lyric: lrc }
+    }
+    return null
+  } catch (e) {
+    console.warn('[SourceResolver] Kuwo lyrics API failed:', e)
+    return null
+  }
+}
+
+// ---- Netease (网易云) Lyrics API ----
+// Returns: { lrc: { lyric: "..." }, tlyric: { lyric: "..." }, romalrc: { lyric: "..." } }
+async function fetchNeteaseLyrics(songId: string): Promise<SourceLyricResult | null> {
+  try {
+    const resp = await fetch(`/api/netease/api/song/lyric?id=${songId}&lv=1&tv=1`)
+    const data = await resp.json()
+    if (data?.lrc?.lyric) {
+      return {
+        lyric: data.lrc.lyric,
+        tlyric: data.tlyric?.lyric || undefined,
+        // Netease romalrc uses field name "lyric" inside romalrc object
+        rlyric: data.romalrc?.lyric || undefined,
       }
     }
+    return null
+  } catch (e) {
+    console.warn('[SourceResolver] Netease lyrics API failed:', e)
+    return null
+  }
+}
 
-    // Try Netease lyrics (they're usually available without auth)
-    if (source === 'wy' && id) {
-      const resp = await fetch(`/api/netease/api/song/lyric?id=${id}&lv=1&tv=1`)
-      const data = await resp.json()
-      if (data?.lrc?.lyric) {
-        return {
-          lyric: data.lrc.lyric,
-          tlyric: data.tlyric?.lyric || undefined,
-        }
-      }
+// ---- QQ Music (QQ音乐) Lyrics API ----
+// Returns base64-encoded lyrics, needs decodeBase64()
+async function fetchQQLyrics(songmid: string): Promise<SourceLyricResult | null> {
+  try {
+    // Primary: musicu API (more reliable)
+    const resp = await fetch('/api/qqmusic/cgi-bin/musicu.fcg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lyric: {
+          module: 'music.musichallSong.LyricInfo',
+          method: 'GetLyricInfo',
+          param: { songMID: songmid, songType: 0 },
+        },
+        comm: { uin: 0, format: 'json', ct: 20, cv: 1859 },
+      }),
+    })
+    const data = await resp.json()
+    if (data?.lyric?.data?.lyric) {
+      const lyric = decodeBase64(data.lyric.data.lyric)
+      const tlyric = data.lyric.data.trans ? decodeBase64(data.lyric.data.trans) : undefined
+      return { lyric, tlyric }
     }
 
-    // Try QQ Music lyrics
-    if (source === 'tx' && id) {
-      const resp = await fetch(`/api/qqmusic/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${id}&format=json`)
-      const data = await resp.json()
-      if (data?.lyric) {
-        const lyric = decodeBase64(data.lyric)
-        const tlyric = data.tlyric ? decodeBase64(data.tlyric) : undefined
+    // Fallback: old fcg API
+    const resp2 = await fetch(`/api/qqmusic/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${songmid}&format=json`)
+    const data2 = await resp2.json()
+    if (data2?.lyric) {
+      const lyric = decodeBase64(data2.lyric)
+      const tlyric = data2.tlyric ? decodeBase64(data2.tlyric) : undefined
+      return { lyric, tlyric }
+    }
+
+    return null
+  } catch (e) {
+    console.warn('[SourceResolver] QQ Music lyrics API failed:', e)
+    return null
+  }
+}
+
+// ---- Kugou (酷狗) Lyrics API ----
+// Uses the hash-based lyrics API
+async function fetchKugouLyrics(hash: string): Promise<SourceLyricResult | null> {
+  try {
+    // Kugou lyrics API requires hash + timelength or hash alone
+    const resp = await fetch(`/api/kugou/app/i/kugou/lyric?cmd=100&hash=${hash}&hlrcType=1`)
+    if (!resp.ok) return null
+    const data = await resp.json()
+    if (data?.errcode === 0 && data?.data?.lyrics) {
+      // Kugou returns both lyric (original) and translation
+      const lyric = data.data.lyrics || ''
+      const tlyric = data.data.trans_user?.lyrics || data.data.translation?.lyrics || undefined
+      return { lyric, tlyric }
+    }
+    // Alternative format
+    if (data?.candidates?.[0]?.accesskey) {
+      const accesskey = data.candidates[0].accesskey
+      const id = data.candidates[0].id || data.candidates[0].fid
+      // Fetch actual lyrics using accesskey
+      const resp2 = await fetch(
+        `/api/kugou/app/i/kugou/lyric?cmd=200&accesskey=${accesskey}&hash=${hash}&id=${id}&hlrcType=1&kfnewver=1`
+      )
+      const data2 = await resp2.json()
+      if (data2?.errcode === 0 && data2?.data?.lyrics) {
+        const lyric = data2.data.lyrics || ''
+        const tlyric = data2.data.trans_user?.lyrics || data2.data.translation?.lyrics || undefined
         return { lyric, tlyric }
       }
     }
+    return null
   } catch (e) {
-    console.warn('[SourceResolver] Public lyric fetch failed:', e)
+    console.warn('[SourceResolver] Kugou lyrics API failed:', e)
+    return null
   }
+}
 
-  return null
+// ---- Migu (咪咕) Lyrics API ----
+async function fetchMiguLyrics(copyrightId: string): Promise<SourceLyricResult | null> {
+  try {
+    const resp = await fetch(
+      `/api/migu/MIGUM2.0/v1.0/content/resourceinfo.do?copyrightId=${copyrightId}&resourceType=2`
+    )
+    const data = await resp.json()
+    if (data?.lyricUrl) {
+      // Migu returns a URL to the LRC file — fetch it
+      const lrcResp = await fetch(data.lyricUrl)
+      if (lrcResp.ok) {
+        const lyric = await lrcResp.text()
+        if (lyric && lyric.includes('[')) {
+          return { lyric }
+        }
+      }
+    }
+    // Alternative: inline lyrics
+    if (data?.lrcCode) {
+      return { lyric: data.lrcCode }
+    }
+    return null
+  } catch (e) {
+    console.warn('[SourceResolver] Migu lyrics API failed:', e)
+    return null
+  }
 }
 
 function decodeBase64(str: string): string {

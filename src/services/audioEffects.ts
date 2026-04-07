@@ -112,9 +112,9 @@ export class AudioEqualizer {
       this.gainNode = this.audioContext.createGain()
       this.gainNode.gain.value = 1.0
 
-      this.analyserNode = this.audioContext.createAnalyser()
-      this.analyserNode.fftSize = 256
-      this.analyserNode.smoothingTimeConstant = 0.75
+  this.analyserNode = this.audioContext.createAnalyser()
+  this.analyserNode.fftSize = 2048
+  this.analyserNode.smoothingTimeConstant = 0.5
 
       // Connect chain
       this.sourceNode.connect(this.filters[0])

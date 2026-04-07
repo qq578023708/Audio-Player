@@ -21,8 +21,8 @@
           添加并播放
         </button>
       </div>
-      <div v-if="player.error.value" class="error-msg">
-        {{ player.error.value }}
+      <div v-if="localError" class="error-msg">
+        {{ localError }}
       </div>
       <div v-if="successMsg" class="success-msg">
         {{ successMsg }}
@@ -96,6 +96,7 @@ const player = useAudioPlayer()
 const store = usePlaylistStore()
 
 const url = ref('')
+const localError = ref('')
 const successMsg = ref('')
 const selectedFolder = ref('')
 const batchInput = ref('')
@@ -108,6 +109,7 @@ const batchLines = computed(() => {
 function handleAdd() {
   const trimmed = url.value.trim()
   if (!trimmed) return
+  localError.value = ''
 
   try {
     new URL(trimmed)
@@ -118,7 +120,7 @@ function handleAdd() {
       new URL(fullUrl)
       doAdd(fullUrl)
     } catch {
-      player.error.value = '请输入有效的 URL 地址'
+      localError.value = '请输入有效的 URL 地址'
     }
   }
 }

@@ -199,6 +199,16 @@
       <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
       <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
     </template>
+    <template v-else-if="name === 'monitor-speaker'">
+      <rect x="2" y="3" width="20" height="14" rx="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+      <path d="M8 10l2 2-2 2" />
+      <path d="M14 10h3" />
+    </template>
+    <template v-else-if="name === 'check'">
+      <polyline points="20 6 9 17 4 12" stroke-width="2.5" />
+    </template>
     <!-- Fallback: music note -->
     <template v-else>
       <path d="M9 18V5l12-2v13" />

@@ -12,8 +12,8 @@
       </div>
     </div>
 
-    <div class="lyrics-scroll" ref="scrollContainer" @scroll="onScroll">
-      <div class="lyrics-padding" :style="{ height: `${viewportHeight * 0.4}px` }" />
+    <div class="lyrics-scroll" ref="scrollContainer">
+      <div class="lyrics-top-spacer" />
 
       <div
         v-for="(line, index) in lyrics.lines"
@@ -33,7 +33,7 @@
         </div>
       </div>
 
-      <div class="lyrics-padding" :style="{ height: `${viewportHeight * 0.4}px` }" />
+      <div class="lyrics-bottom-spacer" />
     </div>
 
     <div class="lyrics-empty" v-if="lyrics.lines.length === 0">
@@ -66,7 +66,7 @@ const currentLineIndex = ref(-1)
 const showTranslation = ref(true)
 const isUserScrolling = ref(false)
 let scrollTimeout: ReturnType<typeof setTimeout> | null = null
-const viewportHeight = ref(600)
+let isProgrammaticScroll = false // Guard: don't let programmatic scroll trigger isUserScrolling
 
 // Parse lyrics from current track
 const lyrics = computed<LyricsData>(() => {
@@ -80,8 +80,9 @@ watch(() => player.currentTime.value, (time) => {
   const idx = findCurrentLineIndex(lyrics.value.lines, time)
   if (idx !== currentLineIndex.value) {
     currentLineIndex.value = idx
-    if (!isUserScrolling.value) {
-      scrollToLine(idx)
+    // Auto-scroll to the active line (unless user is scrolling)
+    if (!isUserScrolling.value && idx >= 0) {
+      scrollToActiveLine(idx)
     }
   }
 })
@@ -94,26 +95,37 @@ watch(() => props.track, () => {
   }
 })
 
-function scrollToLine(index: number) {
+function scrollToActiveLine(index: number) {
   nextTick(() => {
     const el = lineRefs[index]
-    if (!el || !scrollContainer.value) return
-
     const container = scrollContainer.value
-    const containerHeight = container.clientHeight
-    const lineTop = el.offsetTop
-    const lineHeight = el.clientHeight
+    if (!el || !container) return
 
-    // Center the active line
-    const targetScroll = lineTop - containerHeight / 2 + lineHeight / 2
-    container.scrollTo({
-      top: Math.max(0, targetScroll),
-      behavior: 'smooth'
-    })
+    const containerRect = container.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+
+    // Calculate where the element is relative to the container's center
+    const elCenter = elRect.top - containerRect.top + elRect.height / 2
+    const containerCenter = containerRect.height / 2
+    const offset = elCenter - containerCenter
+
+    // Only scroll if the line is not already centered (with some tolerance)
+    if (Math.abs(offset) > 3) {
+      // Mark as programmatic so onScroll doesn't set isUserScrolling
+      isProgrammaticScroll = true
+      container.scrollTop += offset
+      // Reset the flag after the scroll event fires (next microtask is too early, use rAF)
+      requestAnimationFrame(() => {
+        isProgrammaticScroll = false
+      })
+    }
   })
 }
 
 function onScroll() {
+  // Ignore scroll events caused by programmatic scrolling
+  if (isProgrammaticScroll) return
+
   isUserScrolling.value = true
   if (scrollTimeout) clearTimeout(scrollTimeout)
   scrollTimeout = setTimeout(() => {
@@ -126,14 +138,16 @@ function seekToLine(line: { time: number }) {
 }
 
 onMounted(() => {
-  viewportHeight.value = window.innerHeight
-  window.addEventListener('resize', () => {
-    viewportHeight.value = window.innerHeight
-  })
+  if (scrollContainer.value) {
+    scrollContainer.value.addEventListener('scroll', onScroll, { passive: true })
+  }
 })
 
 onUnmounted(() => {
   if (scrollTimeout) clearTimeout(scrollTimeout)
+  if (scrollContainer.value) {
+    scrollContainer.value.removeEventListener('scroll', onScroll)
+  }
 })
 </script>
 
@@ -144,6 +158,7 @@ onUnmounted(() => {
   height: 100%;
   overflow: hidden;
   user-select: none;
+  position: relative;
 }
 
 .lyrics-header {
@@ -191,34 +206,61 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  scroll-behavior: smooth;
+  /* NO scroll-behavior: smooth — it causes lag in lyrics sync */
+  /* Gradient mask: fade edges */
   mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 15%,
-    black 85%,
+    rgba(0,0,0,0.6) 8%,
+    black 20%,
+    black 80%,
+    rgba(0,0,0,0.6) 92%,
     transparent 100%
   );
   -webkit-mask-image: linear-gradient(
     to bottom,
     transparent 0%,
-    black 15%,
-    black 85%,
+    rgba(0,0,0,0.6) 8%,
+    black 20%,
+    black 80%,
+    rgba(0,0,0,0.6) 92%,
     transparent 100%
   );
 }
 
+/* Spacer: push first lyric to the vertical center of the container */
+/* Use calc to ensure at least 2 lines are visible when container is small */
+.lyrics-top-spacer {
+  height: calc(50% - 40px);
+  min-height: 20px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+/* Bottom spacer mirrors the top */
+.lyrics-bottom-spacer {
+  height: calc(50% - 40px);
+  min-height: 20px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
 .lyric-line {
-  padding: 10px 24px;
+  padding: 8px 24px;
   cursor: pointer;
-  transition: all 0.35s ease;
+  transition: color 0.3s ease, opacity 0.3s ease;
+  min-height: 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .lyric-text {
   font-size: 15px;
   color: var(--text-muted);
-  transition: all 0.35s ease;
+  transition: all 0.3s ease;
   line-height: 1.8;
+  text-align: center;
 }
 
 .lyric-line.hasTranslation .lyric-text {
@@ -229,15 +271,18 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-muted);
   opacity: 0.5;
-  transition: all 0.35s ease;
+  transition: all 0.3s ease;
   line-height: 1.6;
+  text-align: center;
 }
 
+/* ===== Active (current) line ===== */
 .lyric-line.active .lyric-text {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--accent);
-  transform: scale(1.02);
+  text-shadow: 0 0 20px var(--accent-glow, rgba(255, 106, 0, 0.4)),
+               0 0 40px var(--accent-glow, rgba(255, 106, 0, 0.2));
 }
 
 .lyric-line.active .lyric-translation {
@@ -248,15 +293,11 @@ onUnmounted(() => {
 
 .lyric-line.passed .lyric-text {
   color: var(--text-secondary);
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .lyric-line:hover .lyric-text {
   color: var(--text-primary);
-}
-
-.lyrics-padding {
-  flex-shrink: 0;
 }
 
 .lyrics-empty {
