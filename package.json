@@ -38,7 +38,7 @@
     "vue-tsc": "^2.2.0",
     "wait-on": "^8.0.1"
   },
-  "main": "electron/main.js",
+  "main": "electron/main.cjs",
   "build": {
     "appId": "com.audioflow.player",
     "productName": "AudioFlow",
@@ -51,7 +51,7 @@
       "electron/**/*"
     ],
     "extraMetadata": {
-      "main": "electron/main.js"
+      "main": "electron/main.cjs"
     },
     "mac": {
       "target": [

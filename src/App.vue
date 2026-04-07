@@ -1,15 +1,23 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { usePlaylistStore } from '@/stores/playlist'
 import Sidebar from './components/Sidebar.vue'
 import PlayerBar from './components/PlayerBar.vue'
+import TitleBar from './components/TitleBar.vue'
 import SvgIcon from './components/SvgIcon.vue'
+import { useRoute } from 'vue-router'
 
 const player = useAudioPlayer()
 const store = usePlaylistStore()
 const showRightPanel = ref(false)
 const mobileMenuOpen = ref(false)
+const route = useRoute()
+
+// Close mobile sidebar on route change
+watch(() => route.path, () => {
+  mobileMenuOpen.value = false
+})
 
 onMounted(() => {
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -57,8 +65,14 @@ watch(() => player.currentTrack.value, (track) => {
 
 <template>
   <div class="app-layout">
+    <!-- Custom titlebar (Electron frameless window) -->
+    <TitleBar />
+
     <!-- Sidebar -->
-    <Sidebar />
+    <Sidebar :class="{ open: mobileMenuOpen }" />
+
+    <!-- Mobile sidebar overlay -->
+    <div class="sidebar-overlay" v-if="mobileMenuOpen" @click="mobileMenuOpen = false"></div>
 
     <!-- Main content area -->
     <div class="main-area">
@@ -139,6 +153,7 @@ watch(() => player.currentTrack.value, (track) => {
   width: 100%;
   height: 100%;
   overflow: hidden;
+  padding-top: var(--titlebar-height, 0px);
 }
 
 .main-area {
@@ -395,6 +410,14 @@ watch(() => player.currentTrack.value, (track) => {
     bottom: var(--player-bar-height);
     z-index: 150;
     box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 199;
+    backdrop-filter: blur(2px);
   }
 }
 </style>
