@@ -22,11 +22,17 @@ import type {
 
 // ===== Public API Types =====
 
+export interface MusicUrlResult {
+  url: string
+  /** Lyrics bundled with the musicUrl response (plugin returned them together) */
+  lyricResult?: SourceLyricResult
+}
+
 export interface LxEngineInstance {
   plugin: ParsedSourcePlugin
   initialized: boolean
   capabilities: Map<string, LxSourceCapability>
-  getMusicUrl(musicInfo: LxMusicInfo, quality: MusicQuality): Promise<string>
+  getMusicUrl(musicInfo: LxMusicInfo, quality: MusicQuality): Promise<MusicUrlResult>
   getLyric(musicInfo: LxMusicInfo): Promise<SourceLyricResult | null>
   getPic(musicInfo: LxMusicInfo): Promise<string | null>
   destroy(): void
@@ -558,7 +564,7 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
   }
 
   // ── Public interface methods ───────────────────────────────────────────────
-  async function getMusicUrl(musicInfo: LxMusicInfo, quality: MusicQuality): Promise<string> {
+  async function getMusicUrl(musicInfo: LxMusicInfo, quality: MusicQuality): Promise<MusicUrlResult> {
     const source = (musicInfo.source as string) || plugin.sources[0]
     // Clear stale response bodies before this request
     state.lastResponseBodies = []
@@ -573,7 +579,7 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
         const fallbackUrl = tryExtractUrlFromBody(state.lastResponseBodies[i])
         if (fallbackUrl) {
           console.log(`[LxEngine:${plugin.name}] Fallback URL extracted from lx.request response`)
-          return fallbackUrl
+          return { url: fallbackUrl }
         }
       }
       throw pluginError // Re-throw if fallback also failed
@@ -626,35 +632,78 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
   }
 }
 
-// ===== URL normalizer =========================================================
+// ===== URL + Lyrics normalizer =================================================
 // Plugins may return: string URL, { url }, { data }, { data: { url } }, etc.
+// Some plugins also bundle lyrics in the musicUrl response: { url, lyric, tlyric, ... }
 
-export function normalizeUrl(result: unknown): string {
+export function normalizeUrl(result: unknown): MusicUrlResult {
   if (!result) throw new Error('Plugin returned empty URL')
 
   if (typeof result === 'string') {
     const s = result.trim()
-    if (s.startsWith('http://') || s.startsWith('https://')) return s
+    if (s.startsWith('http://') || s.startsWith('https://')) return { url: s }
     throw new Error(`Plugin returned non-HTTP URL: ${s.substring(0, 80)}`)
   }
 
   const obj = result as Record<string, any>
+  let extractedUrl = ''
+
+  // Extract URL from various structures
   if (obj.url) {
     const s = String(obj.url).trim()
-    if (s.startsWith('http://') || s.startsWith('https://')) return s
+    if (s.startsWith('http://') || s.startsWith('https://')) extractedUrl = s
   }
-  if (obj.data) {
+  if (!extractedUrl && obj.data) {
     if (typeof obj.data === 'string') {
       const s = obj.data.trim()
-      if (s.startsWith('http://') || s.startsWith('https://')) return s
+      if (s.startsWith('http://') || s.startsWith('https://')) extractedUrl = s
     }
     if (obj.data?.url) {
       const s = String(obj.data.url).trim()
-      if (s.startsWith('http://') || s.startsWith('https://')) return s
+      if (s.startsWith('http://') || s.startsWith('https://')) extractedUrl = s
     }
   }
 
-  throw new Error(`Cannot extract URL from plugin result: ${JSON.stringify(result)?.substring(0, 120)}`)
+  if (!extractedUrl) {
+    throw new Error(`Cannot extract URL from plugin result: ${JSON.stringify(result)?.substring(0, 120)}`)
+  }
+
+  // Extract lyrics if bundled with the response
+  const lyricResult = extractLyricFromResult(obj)
+  if (lyricResult) {
+    console.log('[LxEngine] Lyrics bundled with musicUrl response')
+  }
+
+  return { url: extractedUrl, lyricResult: lyricResult || undefined }
+}
+
+/**
+ * Try to extract lyrics from a plugin's musicUrl response object.
+ * Lyrics may be at top level: { url, lyric, lrc, tlyric, ... }
+ * Or nested inside data: { data: { url, lrc, lyric, tlyric, ... } }
+ */
+function extractLyricFromResult(obj: Record<string, any>): SourceLyricResult | null {
+  // Check top-level fields first
+  const topLyric = obj.lyric || obj.lrc || obj.lrcText || ''
+  // Also check nested data object (common in API proxy plugins)
+  const dataObj = obj.data && typeof obj.data === 'object' ? obj.data as Record<string, any> : null
+  const dataLyric = dataObj?.lrc || dataObj?.lyric || dataObj?.lrcText || ''
+
+  const lyric = topLyric || dataLyric
+  if (!lyric) return null
+
+  return {
+    lyric,
+    tlyric: topLyric
+      ? (obj.tlyric || obj.tlrc || obj.roma || undefined)
+      : (dataObj?.tlyric || dataObj?.tlrc || dataObj?.roma || undefined),
+    rlyric: topLyric
+      ? (obj.rlyric || undefined)
+      : (dataObj?.rlyric || undefined),
+    lxlyric: topLyric
+      ? (obj.lxlyric || undefined)
+      : (dataObj?.lxlyric || undefined),
+  }
 }
 
 // ===== Browser Buffer Polyfill ================================================

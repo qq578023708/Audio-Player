@@ -129,12 +129,17 @@ export async function resolveTrackUrl(
       }
 
       // getMusicUrl already normalizes and throws if URL is invalid
-      const url = await engine.getMusicUrl(musicInfo, quality)
+      const musicResult = await engine.getMusicUrl(musicInfo, quality)
       return {
-        url,
+        url: musicResult.url,
         quality,
         source,
         pluginName: plugin.name,
+        // Pass through lyrics if bundled with the musicUrl response
+        lyric: musicResult.lyricResult?.lyric,
+        tlyric: musicResult.lyricResult?.tlyric,
+        rlyric: musicResult.lyricResult?.rlyric,
+        lxlyric: musicResult.lyricResult?.lxlyric,
       }
     } catch (e) {
       // Only log error details if there are multiple plugins (otherwise it's redundant)

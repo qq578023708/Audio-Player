@@ -127,6 +127,11 @@ export interface SourceResolveResult {
   quality: MusicQuality
   source: MusicSource
   pluginName: string
+  // Optional lyrics bundled with the musicUrl response (avoids extra lyric request)
+  lyric?: string
+  tlyric?: string
+  rlyric?: string
+  lxlyric?: string
 }
 
 // Lyric result from source

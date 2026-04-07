@@ -170,7 +170,14 @@ export function useAudioPlayer() {
       resolveStatus.value = `${result.pluginName} · ${result.source.toUpperCase()} · ${result.quality}`
       track.url = result.url
       currentTrack.value = { ...track }
-      await fetchTrackLyrics(track, plugins)
+      // Use lyrics bundled with musicUrl response if available, otherwise fetch separately
+      if (result.lyric) {
+        track.lrc = result.lyric
+        if (result.tlyric) track.tlyric = result.tlyric
+        currentTrack.value = { ...track }
+      } else {
+        await fetchTrackLyrics(track, plugins)
+      }
       playWithUrl(result.url, track)
     } catch (e: any) {
       isResolving.value = false
