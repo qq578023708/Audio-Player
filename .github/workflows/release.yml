@@ -219,12 +219,12 @@ jobs:
       - name: Decode keystore
         run: |
           # 检查 secret 是否存在
-          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
-            echo "Error: ANDROID_KEYSTORE_BASE64 secret is not set!"
+          if [ -z "${{ secrets.ANDROID }}" ]; then
+            echo "Error: ANDROID secret is not set!"
             exit 1
           fi
           # 解码 base64（使用 -w 0 格式）
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+          echo "${{ secrets.ANDROID }}" | base64 -d > android/app/keystore.jks
           ls -la android/app/keystore.jks
           # 检查文件大小
           FILESIZE=$(stat -c%s "android/app/keystore.jks")
@@ -239,14 +239,14 @@ jobs:
         run: |
           # 检查 keystore 文件
           echo "=== Keystore info ==="
-          keytool -list -v -keystore app/keystore.jks -storepass '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' 2>&1 | head -20 || echo "Keytool failed"
+          keytool -list -v -keystore app/keystore.jks -storepass '${{ secrets.ANDROID }}' 2>&1 | head -20 || echo "Keytool failed"
           
           # 使用 apksigner 签名
           $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
             --ks app/keystore.jks \
-            --ks-key-alias '${{ secrets.ANDROID_KEY_ALIAS }}' \
-            --ks-pass 'pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' \
-            --key-pass 'pass:${{ secrets.ANDROID_KEY_PASSWORD }}' \
+            --ks-key-alias '${{ secrets.ANDROID }}' \
+            --ks-pass 'pass:${{ secrets.ANDROID }}' \
+            --key-pass 'pass:${{ secrets.ANDROID }}' \
             --out app/build/outputs/apk/release/app-release-signed.apk \
             app/build/outputs/apk/release/app-release-unsigned.apk
           
