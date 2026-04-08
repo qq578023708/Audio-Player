@@ -223,8 +223,15 @@ jobs:
             echo "Error: ANDROID secret is not set!"
             exit 1
           fi
+          # 调试：显示 secret 长度和前50个字符
+          SECRET_CONTENT='${{ secrets.ANDROID }}'
+          echo "Secret length: ${#SECRET_CONTENT}"
+          echo "Secret first 50 chars: ${SECRET_CONTENT:0:50}"
           # 解码 base64（使用 -w 0 格式）
-          echo "${{ secrets.ANDROID }}" | base64 -d > android/app/keystore.jks
+          echo "$SECRET_CONTENT" | base64 -d > android/app/keystore.jks 2>&1 || {
+            echo "Base64 decode failed. Trying with tr to remove newlines..."
+            echo "$SECRET_CONTENT" | tr -d '\n\r' | base64 -d > android/app/keystore.jks
+          }
           ls -la android/app/keystore.jks
           # 检查文件大小
           FILESIZE=$(stat -c%s "android/app/keystore.jks")
