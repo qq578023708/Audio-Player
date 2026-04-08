@@ -42,7 +42,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Vite + Electron (Windows)
         run: npm run electron:build:win
@@ -80,7 +80,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Vite + Electron (macOS)
         run: npm run electron:build:mac
@@ -133,7 +133,7 @@ jobs:
             fakeroot
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build Vite + Electron (Linux)
         run: npm run electron:build:linux
@@ -177,7 +177,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       - name: Build web assets
         run: npm run build

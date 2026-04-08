@@ -51,7 +51,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - run: npm ci
+      - run: npm install
 
       - name: Type check
         run: npx vue-tsc --noEmit
@@ -86,7 +86,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - run: npm ci
+      - run: npm install
 
       - name: Electron build (Windows)
         run: npm run electron:build:win
@@ -121,7 +121,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
 
-      - run: npm ci
+      - run: npm install
 
       - name: Electron build (macOS)
         run: npm run electron:build:mac
@@ -167,7 +167,7 @@ jobs:
             dpkg \
             fakeroot
 
-      - run: npm ci
+      - run: npm install
 
       - name: Electron build (Linux)
         run: npm run electron:build:linux
@@ -213,7 +213,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - run: npm ci
+      - run: npm install
 
       - name: Build web assets
         run: npm run build
