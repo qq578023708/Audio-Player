@@ -209,6 +209,10 @@
 import { ref, onMounted } from 'vue'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { useSourceStore } from '@/stores/source'
+
+defineOptions({
+  name: 'source'
+})
 import { parseLxSourcePlugin, SOURCE_NAMES, SOURCE_COLORS } from '@/services/sourceParser'
 
 const sourceStore = useSourceStore()

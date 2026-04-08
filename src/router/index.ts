@@ -57,6 +57,12 @@ const router = createRouter({
       name: 'now-playing',
       component: () => import('@/views/NowPlayingView.vue'),
       meta: { title: '正在播放' }
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
+      meta: { title: '设置' }
     }
   ]
 })

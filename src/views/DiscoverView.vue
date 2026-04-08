@@ -252,6 +252,10 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+
+defineOptions({
+  name: 'discover'
+})
 import SvgIcon from '@/components/SvgIcon.vue'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { usePlaylistStore } from '@/stores/playlist'

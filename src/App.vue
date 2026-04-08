@@ -21,6 +21,16 @@ const showRightPanel = ref(false)
 const mobileMenuOpen = ref(false)
 const route = useRoute()
 
+// Views to keep alive (preserve state when navigating away)
+const cachedViews = ref([
+  'discover',
+  'playlist',
+  'favorites',
+  'history',
+  'rankings',
+  'source',
+])
+
 // Close mobile sidebar on route change
 watch(() => route.path, () => {
   mobileMenuOpen.value = false
@@ -97,7 +107,9 @@ watch(() => player.currentTrack.value, (track) => {
       <div class="page-content">
         <router-view v-slot="{ Component, route }">
           <transition :name="route.meta.transition || 'page'" mode="out-in">
-            <component :is="Component" :key="route.path" />
+            <keep-alive :include="cachedViews">
+              <component :is="Component" :key="route.path" />
+            </keep-alive>
           </transition>
         </router-view>
       </div>

@@ -48,6 +48,10 @@ import SvgIcon from '@/components/SvgIcon.vue'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { usePlaylistStore } from '@/stores/playlist'
 
+defineOptions({
+  name: 'favorites'
+})
+
 const player = useAudioPlayer()
 const store = usePlaylistStore()
 

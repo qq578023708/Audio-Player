@@ -6,6 +6,7 @@
  * 2. Resolving track URLs through LX Music plugins
  * 3. Fetching lyrics through plugins
  * 4. Auto-switching sources on failure
+ * 5. Platform-aware API calls (Web, Electron, Android/iOS)
  */
 
 import type {
@@ -14,6 +15,95 @@ import type {
   ParsedSourcePlugin,
 } from '@/types'
 import { createLxEngine, getLxEngine, destroyLxEngine, type LxEngineInstance } from './lxEngine'
+
+// ===== Platform Detection =====
+
+/** Detect if running in Capacitor mobile app */
+function isCapacitor(): boolean {
+  return !!(window as any).Capacitor?.isNativePlatform?.()
+}
+
+/** Detect if running in Android WebView */
+function isAndroid(): boolean {
+  return isCapacitor() && (window as any).Capacitor.getPlatform() === 'android'
+}
+
+/** Detect if running in iOS WebView */
+function isIOS(): boolean {
+  return isCapacitor() && (window as any).Capacitor.getPlatform() === 'ios'
+}
+
+/** Detect if running in Electron production (file:// protocol) */
+function isElectronProduction(): boolean {
+  return !!(window as any).electronAPI?.isElectron && window.location.protocol === 'file:'
+}
+
+/** 
+ * Platform-aware fetch wrapper
+ * In Capacitor mobile apps, we need to use direct URLs instead of /api/ proxy
+ */
+async function platformFetch(url: string, options?: RequestInit): Promise<Response> {
+  // For non-proxy URLs, use normal fetch
+  if (!url.startsWith('/api/')) {
+    return fetch(url, options)
+  }
+  
+  // In Electron production, useElectron.ts patches fetch to handle /api/ via IPC
+  // In web dev, Vite proxy handles /api/
+  // In Capacitor, we need to use direct URLs
+  
+  if (isCapacitor()) {
+    // Transform /api/xxx to direct API URL
+    const directUrl = transformApiUrlToDirect(url)
+    if (directUrl !== url) {
+      console.log(`[PlatformFetch] Capacitor: ${url} -> ${directUrl.substring(0, 80)}...`)
+      try {
+        const response = await fetch(directUrl, options)
+        return response
+      } catch (e) {
+        console.warn(`[PlatformFetch] Direct fetch failed for ${directUrl}:`, e)
+        throw e
+      }
+    }
+  }
+  
+  return fetch(url, options)
+}
+
+/** Transform /api/xxx URLs to direct API URLs for mobile platforms */
+function transformApiUrlToDirect(url: string): string {
+  // Map of proxy paths to direct API URLs
+  const proxyMap: Record<string, (path: string, query: string) => string> = {
+    '/api/kw-board/songs': (path, query) => {
+      // For kw-board, we need to handle the encrypted API
+      // This requires server-side decryption, so we'll return a special marker
+      // The actual implementation will need a backend proxy
+      return `https://wbd.kuwo.cn/api/bd/bang/bang_info${query}`
+    },
+    '/api/kugou/': (path, query) => `http://mobilecdnbj.kugou.com${path.replace('/api/kugou', '')}${query}`,
+    '/api/qqmusic/': (path, query) => `https://u.y.qq.com${path.replace('/api/qqmusic', '')}${query}`,
+    '/api/netease/': (path, query) => `https://music.163.com${path.replace('/api/netease', '')}${query}`,
+    '/api/migu/': (path, query) => `https://app.c.nf.migu.cn${path.replace('/api/migu', '')}${query}`,
+    '/api/search-kw/': (path, query) => `https://search.kuwo.cn${path.replace('/api/search-kw', '')}${query}`,
+    '/api/search-kg/': (path, query) => `https://mobilecdn.kugou.com${path.replace('/api/search-kg', '')}${query}`,
+    '/api/search-wy/': (path, query) => `https://music.163.com${path.replace('/api/search-wy', '')}${query}`,
+    '/api/search-tx/': (path, query) => `https://c.y.qq.com${path.replace('/api/search-tx', '')}${query}`,
+    '/api/search-mg/': (path, query) => `https://pd.musicapp.migu.cn${path.replace('/api/search-mg', '')}${query}`,
+  }
+  
+  const parsed = new URL(url, 'http://localhost')
+  const pathname = parsed.pathname
+  const search = parsed.search
+  
+  for (const [prefix, transformer] of Object.entries(proxyMap)) {
+    if (pathname.startsWith(prefix.replace(/\/$/, ''))) {
+      return transformer(pathname, search)
+    }
+  }
+  
+  // No transformation found, return original
+  return url
+}
 
 // ===== Search API =====
 
@@ -333,7 +423,7 @@ export function uninitializePlugin(pluginName: string) {
 async function searchKuwo(keyword: string, page: number): Promise<SearchTrackItem[]> {
   try {
     // Use rformat=json&moession=1 to get JSON response with proper UTF-8 encoding
-    const resp = await fetch(`/api/search-kw/r.s?all=${encodeURIComponent(keyword)}&ft=music&rn=30&pn=${page}&encoding=utf8&rformat=json&moession=1`)
+    const resp = await platformFetch(`/api/search-kw/r.s?all=${encodeURIComponent(keyword)}&ft=music&rn=30&pn=${page}&encoding=utf8&rformat=json&moession=1`)
     const data = await resp.json()
     
     const items: SearchTrackItem[] = []
@@ -365,7 +455,7 @@ async function searchKuwo(keyword: string, page: number): Promise<SearchTrackIte
 async function searchKugou(keyword: string, page: number): Promise<SearchTrackItem[]> {
   try {
     // Kugou has CORS restrictions, use a simpler approach
-    const resp = await fetch(`/api/search-kg/api/v3/search/song?keyword=${encodeURIComponent(keyword)}&page=${page}&pagesize=30&plat=0`)
+    const resp = await platformFetch(`/api/search-kg/api/v3/search/song?keyword=${encodeURIComponent(keyword)}&page=${page}&pagesize=30&plat=0`)
     const data = await resp.json()
     
     return (data?.data?.info || []).map((item: any) => ({
@@ -387,7 +477,7 @@ async function searchKugou(keyword: string, page: number): Promise<SearchTrackIt
 async function searchQQ(keyword: string, page: number): Promise<SearchTrackItem[]> {
   try {
     // Use musicu.fcg POST API (old soso API returns 500)
-    const resp = await fetch('/api/qqmusic/cgi-bin/musicu.fcg', {
+    const resp = await platformFetch('/api/qqmusic/cgi-bin/musicu.fcg', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Referer': 'https://y.qq.com/' },
       body: JSON.stringify({
@@ -425,7 +515,7 @@ async function searchQQ(keyword: string, page: number): Promise<SearchTrackItem[
 
 async function searchWangyi(keyword: string, page: number): Promise<SearchTrackItem[]> {
   try {
-    const resp = await fetch(`/api/search-wy/api/search/get/web?s=${encodeURIComponent(keyword)}&type=1&offset=${(page - 1) * 30}&limit=30`)
+    const resp = await platformFetch(`/api/search-wy/api/search/get/web?s=${encodeURIComponent(keyword)}&type=1&offset=${(page - 1) * 30}&limit=30`)
     const data = await resp.json()
     
     return (data?.result?.songs || []).map((item: any) => ({
@@ -445,7 +535,7 @@ async function searchWangyi(keyword: string, page: number): Promise<SearchTrackI
 
 async function searchMigu(keyword: string, page: number): Promise<SearchTrackItem[]> {
   try {
-    const resp = await fetch(`/api/search-mg/MIGUM3.0/v1.0/content/search_all.do?text=${encodeURIComponent(keyword)}&pageNo=${page}&pageSize=30&searchSwitch=%7B%22song%22%3A1%7D`)
+    const resp = await platformFetch(`/api/search-mg/MIGUM3.0/v1.0/content/search_all.do?text=${encodeURIComponent(keyword)}&pageNo=${page}&pageSize=30&searchSwitch=%7B%22song%22%3A1%7D`)
     const data = await resp.json()
     
     return (data?.songResultData?.result || []).map((item: any) => ({
@@ -654,7 +744,7 @@ const BOARD_FETCHERS: Record<string, BoardFetcher> = {
 // ---- Kuwo Board Fetcher ----
 // Uses wbdCrypto encrypted API via server-side proxy (/api/kw-board)
 async function fetchKwBoard(bangid: string, page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  const resp = await fetch(`/api/kw-board/songs?id=${bangid}&page=${page}&limit=${limit}`)
+  const resp = await platformFetch(`/api/kw-board/songs?id=${bangid}&page=${page}&limit=${limit}`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   const rawData = await resp.json()
   if (rawData.code !== 200 || !rawData.data?.musiclist) {
@@ -684,7 +774,7 @@ async function fetchKwBoard(bangid: string, page: number, limit: number): Promis
 // ---- Kugou Board Fetcher ----
 // API: http://mobilecdnbj.kugou.com/api/v3/rank/song
 async function fetchKgBoard(bangid: string, page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  const resp = await fetch(
+  const resp = await platformFetch(
     `/api/kugou/api/v3/rank/song?version=9108&ranktype=1&plat=0&pagesize=${limit}&area_code=1&page=${page}&rankid=${bangid}&with_res_tag=0&show_portrait_mv=1`
   )
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
@@ -710,7 +800,7 @@ async function fetchKgBoard(bangid: string, page: number, limit: number): Promis
 // ---- QQ Music Board Fetcher ----
 // API: https://u.y.qq.com/cgi-bin/musicu.fcg (POST)
 async function fetchTxBoard(bangid: string, _page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  const resp = await fetch('/api/qqmusic/cgi-bin/musicu.fcg', {
+  const resp = await platformFetch('/api/qqmusic/cgi-bin/musicu.fcg', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -748,7 +838,7 @@ async function fetchTxBoard(bangid: string, _page: number, limit: number): Promi
 // API: https://music.163.com/weapi/v3/playlist/detail (POST with weapi crypto — simplified via proxy)
 async function fetchWyBoard(bangid: string, _page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
   // Use the simpler non-encrypted endpoint via proxy
-  const resp = await fetch(`/api/netease/api/v6/playlist/detail?id=${bangid}&n=${limit}&s=0`)
+  const resp = await platformFetch(`/api/netease/api/v6/playlist/detail?id=${bangid}&n=${limit}&s=0`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   const data = await resp.json()
   if (data.code !== 200) throw new Error(data.code?.toString())
@@ -771,7 +861,7 @@ async function fetchWyBoard(bangid: string, _page: number, limit: number): Promi
 // ---- Migu Board Fetcher ----
 // API: https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/querycontentbyId.do
 async function fetchMgBoard(bangid: string, _page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  const resp = await fetch(
+  const resp = await platformFetch(
     `/api/migu/MIGUM2.0/v1.0/content/querycontentbyId.do?columnId=${bangid}&needAll=0&pageSize=${limit}`,
     {
       headers: {
@@ -1010,7 +1100,7 @@ async function fetchKwSongList(sortId: string, tagId: string | null, page: numbe
   }
 
   // Use CORS proxy for wapi.kuwo.cn and mobileinterfaces.kuwo.cn
-  const resp = await fetch('/api/cors-proxy', {
+  const resp = await platformFetch('/api/cors-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -1055,7 +1145,7 @@ async function fetchKwSongListDetail(listId: string, page: number): Promise<{ it
   }
 
   const url = `http://nplserver.kuwo.cn/pl.svc?op=getlistinfo&pid=${id}&pn=${page - 1}&rn=100&encode=utf8&keyset=pl2012&identity=kuwo&pcmp4=1&vipver=MUSIC_9.0.5.0_W1&newver=1`
-  const resp = await fetch('/api/cors-proxy', {
+  const resp = await platformFetch('/api/cors-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -1099,7 +1189,7 @@ async function fetchKwSongListDetail(listId: string, page: number): Promise<{ it
 
 async function searchKwSongList(text: string, page: number, limit: number): Promise<{ list: SongListItem[]; total: number }> {
   const url = `http://search.kuwo.cn/r.s?all=${encodeURIComponent(text)}&pn=${page - 1}&rn=${limit}&rformat=json&encoding=utf8&ver=mbox&vipver=MUSIC_8.7.7.0_BCS37&plat=pc&devid=28156413&ft=playlist&pay=0&needliveshow=0`
-  const resp = await fetch('/api/cors-proxy', {
+  const resp = await platformFetch('/api/cors-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -1197,7 +1287,7 @@ async function fetchKgSongList(_sortId: string, _tagId: string | null, _page: nu
 async function fetchKgSongListDetail(listId: string, page: number): Promise<{ items: ChartSongItem[]; info?: SongListDetailInfo; total: number }> {
   // Kugou uses specialid for songList detail
   const url = `http://mobilecdnbj.kugou.com/api/v3/special/song?version=9108&plat=0&specialid=${listId}&pagesize=100&page=${page}`
-  const resp = await fetch('/api/cors-proxy', {
+  const resp = await platformFetch('/api/cors-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
@@ -1262,7 +1352,7 @@ async function fetchLyricFromSourceApi(musicInfo: LxMusicInfo, track?: Track): P
 // Mobile API: returns lrclist array with lineLyric + time
 async function fetchKuwoLyrics(musicId: string): Promise<SourceLyricResult | null> {
   try {
-    const resp = await fetch(`/api/kuwo-m/newh5/singles/songinfoandlrc?musicId=${musicId}&httpsStatus=1`)
+    const resp = await platformFetch(`/api/kuwo-m/newh5/singles/songinfoandlrc?musicId=${musicId}&httpsStatus=1`)
     const data = await resp.json()
     if (data?.data?.lrclist?.length) {
       const lrc = data.data.lrclist
@@ -1286,7 +1376,7 @@ async function fetchKuwoLyrics(musicId: string): Promise<SourceLyricResult | nul
 // Returns: { lrc: { lyric: "..." }, tlyric: { lyric: "..." }, romalrc: { lyric: "..." } }
 async function fetchNeteaseLyrics(songId: string): Promise<SourceLyricResult | null> {
   try {
-    const resp = await fetch(`/api/netease/api/song/lyric?id=${songId}&lv=1&tv=1`)
+    const resp = await platformFetch(`/api/netease/api/song/lyric?id=${songId}&lv=1&tv=1`)
     const data = await resp.json()
     if (data?.lrc?.lyric) {
       return {
@@ -1308,7 +1398,7 @@ async function fetchNeteaseLyrics(songId: string): Promise<SourceLyricResult | n
 async function fetchQQLyrics(songmid: string): Promise<SourceLyricResult | null> {
   try {
     // Primary: musicu API (more reliable)
-    const resp = await fetch('/api/qqmusic/cgi-bin/musicu.fcg', {
+    const resp = await platformFetch('/api/qqmusic/cgi-bin/musicu.fcg', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1328,7 +1418,7 @@ async function fetchQQLyrics(songmid: string): Promise<SourceLyricResult | null>
     }
 
     // Fallback: old fcg API
-    const resp2 = await fetch(`/api/qqmusic/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${songmid}&format=json`)
+    const resp2 = await platformFetch(`/api/qqmusic/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid=${songmid}&format=json`)
     const data2 = await resp2.json()
     if (data2?.lyric) {
       const lyric = decodeBase64(data2.lyric)
@@ -1348,7 +1438,7 @@ async function fetchQQLyrics(songmid: string): Promise<SourceLyricResult | null>
 async function fetchKugouLyrics(hash: string): Promise<SourceLyricResult | null> {
   try {
     // Kugou lyrics API requires hash + timelength or hash alone
-    const resp = await fetch(`/api/kugou/app/i/kugou/lyric?cmd=100&hash=${hash}&hlrcType=1`)
+    const resp = await platformFetch(`/api/kugou/app/i/kugou/lyric?cmd=100&hash=${hash}&hlrcType=1`)
     if (!resp.ok) return null
     const data = await resp.json()
     if (data?.errcode === 0 && data?.data?.lyrics) {
@@ -1362,7 +1452,7 @@ async function fetchKugouLyrics(hash: string): Promise<SourceLyricResult | null>
       const accesskey = data.candidates[0].accesskey
       const id = data.candidates[0].id || data.candidates[0].fid
       // Fetch actual lyrics using accesskey
-      const resp2 = await fetch(
+      const resp2 = await platformFetch(
         `/api/kugou/app/i/kugou/lyric?cmd=200&accesskey=${accesskey}&hash=${hash}&id=${id}&hlrcType=1&kfnewver=1`
       )
       const data2 = await resp2.json()
@@ -1382,13 +1472,13 @@ async function fetchKugouLyrics(hash: string): Promise<SourceLyricResult | null>
 // ---- Migu (咪咕) Lyrics API ----
 async function fetchMiguLyrics(copyrightId: string): Promise<SourceLyricResult | null> {
   try {
-    const resp = await fetch(
+    const resp = await platformFetch(
       `/api/migu/MIGUM2.0/v1.0/content/resourceinfo.do?copyrightId=${copyrightId}&resourceType=2`
     )
     const data = await resp.json()
     if (data?.lyricUrl) {
       // Migu returns a URL to the LRC file — fetch it
-      const lrcResp = await fetch(data.lyricUrl)
+      const lrcResp = await platformFetch(data.lyricUrl)
       if (lrcResp.ok) {
         const lyric = await lrcResp.text()
         if (lyric && lyric.includes('[')) {

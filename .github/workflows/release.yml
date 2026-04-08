@@ -197,15 +197,6 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
-      - name: Verify assets before build
-        run: |
-          echo "=== Checking assets directory ==="
-          ls -laR android/app/src/main/assets/ 2>/dev/null || echo "No assets dir"
-          echo "=== Assets size ==="
-          du -sh android/app/src/main/assets/ 2>/dev/null || echo "No assets"
-          echo "=== Check APK output directory ==="
-          ls -la android/app/build/outputs/apk/release/ 2>/dev/null || echo "No APK dir yet"
-
       - name: Build Android APK (Release)
         working-directory: ./android
         run: |

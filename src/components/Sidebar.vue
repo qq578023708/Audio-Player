@@ -95,6 +95,14 @@
           <SvgIcon name="settings" :size="18" />
           <span>音源管理</span>
         </router-link>
+        <router-link
+          to="/settings"
+          class="nav-item"
+          :class="{ active: $route.path === '/settings' }"
+        >
+          <SvgIcon name="sliders" :size="18" />
+          <span>设置</span>
+        </router-link>
       </div>
 
       <div class="nav-section">

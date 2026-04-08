@@ -187,6 +187,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import SvgIcon from '@/components/SvgIcon.vue'
+
+defineOptions({
+  name: 'playlist'
+})
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { usePlaylistStore } from '@/stores/playlist'
 import type { Track } from '@/types'

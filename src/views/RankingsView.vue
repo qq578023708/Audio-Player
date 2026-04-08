@@ -115,6 +115,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import SvgIcon from '@/components/SvgIcon.vue'
+
+defineOptions({
+  name: 'rankings'
+})
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
 import { usePlaylistStore } from '@/stores/playlist'
 import { useSourceStore } from '@/stores/source'

@@ -313,6 +313,13 @@ function proxyRequest(reqPath, method, headers, body) {
 
 let mainWindow = null
 let tray = null
+let devToolsWindow = null
+
+// Settings state
+let appSettings = {
+  minimizeToTray: true,
+  closeToTray: true,
+}
 
 function createTray() {
   const icon = generateTrayIcon(16)
@@ -421,9 +428,14 @@ function createWindow() {
       mainWindow.maximize()
     }
   })
-  // Close button → minimize to tray instead of quitting
+  // Close button → minimize to tray instead of quitting (if setting enabled)
   ipcMain.on('window-close', () => {
-    mainWindow.hide()
+    if (appSettings.closeToTray) {
+      mainWindow.hide()
+    } else {
+      app.isQuitting = true
+      app.quit()
+    }
   })
   // Force quit (from tray menu or app.quit)
   ipcMain.on('app-quit', () => {
@@ -431,6 +443,48 @@ function createWindow() {
     app.quit()
   })
   ipcMain.handle('window-is-maximized', () => mainWindow.isMaximized())
+
+  // Open DevTools in separate window
+  ipcMain.handle('open-devtools-window', () => {
+    if (!mainWindow) return false
+    
+    // If dev tools window already exists, focus it
+    if (devToolsWindow && !devToolsWindow.isDestroyed()) {
+      devToolsWindow.focus()
+      return true
+    }
+    
+    // Create new dev tools window
+    devToolsWindow = new BrowserWindow({
+      width: 1000,
+      height: 700,
+      title: 'AudioFlow DevTools',
+      icon: generateTrayIcon(16),
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: true,
+      }
+    })
+    
+    // Open dev tools in the new window
+    mainWindow.webContents.setDevToolsWebContents(devToolsWindow.webContents)
+    mainWindow.webContents.openDevTools({ mode: 'detach' })
+    
+    // Handle window close
+    devToolsWindow.on('closed', () => {
+      devToolsWindow = null
+    })
+    
+    return true
+  })
+
+  // Update settings from renderer
+  ipcMain.on('update-settings', (_event, settings) => {
+    if (settings) {
+      appSettings = { ...appSettings, ...settings }
+      console.log('[Main] Settings updated:', appSettings)
+    }
+  })
 
   // Notify renderer when maximize state changes
   mainWindow.on('maximize', () => {
@@ -440,9 +494,9 @@ function createWindow() {
     mainWindow.webContents.send('window-state-changed', false)
   })
 
-  // Intercept window close → hide to tray
+  // Intercept window close → hide to tray (if setting enabled)
   mainWindow.on('close', (event) => {
-    if (!app.isQuitting) {
+    if (!app.isQuitting && appSettings.closeToTray) {
       event.preventDefault()
       mainWindow.hide()
     }
