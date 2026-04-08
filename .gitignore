@@ -41,3 +41,11 @@ build-out.txt
 # Scripts for local use
 generate-keystore.ps1
 generate-keystore.bat
+
+# Scripts folder output
+scripts/*.keystore
+scripts/*.jks
+scripts/*.p12
+scripts/*.pfx
+scripts/keystore.base64.txt
+scripts/*.txt
