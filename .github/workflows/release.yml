@@ -218,9 +218,21 @@ jobs:
 
       - name: Decode keystore
         run: |
-          # 使用 printf 避免 echo 的转义问题
-          printf '%s' '${{ secrets.ANDROID_KEYSTORE_BASE64 }}' | base64 -d > android/app/keystore.jks
+          # 检查 secret 是否存在
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "Error: ANDROID_KEYSTORE_BASE64 secret is not set!"
+            exit 1
+          fi
+          # 解码 base64（使用 -w 0 格式）
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
           ls -la android/app/keystore.jks
+          # 检查文件大小
+          FILESIZE=$(stat -c%s "android/app/keystore.jks")
+          if [ $FILESIZE -eq 0 ]; then
+            echo "Error: Keystore file is empty!"
+            exit 1
+          fi
+          echo "Keystore file size: $FILESIZE bytes"
 
       - name: Sign APK
         working-directory: ./android
