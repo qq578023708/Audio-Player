@@ -59,7 +59,7 @@ function kuwoBoardPlugin(): Plugin {
           if (path === '/list') {
             // Fetch board list from qukudata
             const fetchResp = await fetch('http://qukudata.kuwo.cn/q.k?op=query&cont=tree&node=2&pn=0&rn=1000&fmt=json&level=2')
-            const body = await fetchResp.json()
+            const body = await fetchResp.json() as { child?: Array<{ source: string; sourceid: string | number; name: string; pic?: string }> }
             const boards: any[] = []
             if (body.child) {
               for (const board of body.child) {
@@ -117,7 +117,7 @@ function kuwoMobilePlugin(): Plugin {
   return {
     name: 'kuwo-mobile-proxy',
     configureServer(server) {
-      server.middlewares.use('/api/kuwo-m', async (req, res, next) => {
+      server.middlewares.use('/api/kuwo-m', async (req, res, _next) => {
         const targetBase = 'http://m.kuwo.cn'
         const targetUrl = targetBase + (req.url || '')
         try {
