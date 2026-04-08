@@ -57,6 +57,21 @@ function generateTrayIcon(size = 16) {
   return nativeImage.createFromBuffer(buf, { width: s, height: s, scaleFactor: scale })
 }
 
+// ====== Settings persistence ======
+// Read settings from file (sync, main-process only)
+const settingsPath = path.join(app.getPath('userData'), 'settings.json')
+function getSetting(key, defaultValue) {
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      return settings[key] !== undefined ? settings[key] : defaultValue
+    }
+  } catch (e) {
+    console.error('Failed to read settings:', e)
+  }
+  return defaultValue
+}
+
 // ====== File-based logging for packaged builds ======
 // In packaged mode, console.log goes nowhere visible, so we write to a log file.
 let logStream = null
@@ -421,9 +436,15 @@ function createWindow() {
       mainWindow.maximize()
     }
   })
-  // Close button → minimize to tray instead of quitting
+  // Close button → minimize to tray or quit based on settings
   ipcMain.on('window-close', () => {
-    mainWindow.hide()
+    const minimizeToTray = getSetting('minimizeToTray', true)
+    if (minimizeToTray) {
+      mainWindow.hide()
+    } else {
+      app.isQuitting = true
+      app.quit()
+    }
   })
   // Force quit (from tray menu or app.quit)
   ipcMain.on('app-quit', () => {
@@ -445,6 +466,24 @@ function createWindow() {
     if (!app.isQuitting) {
       event.preventDefault()
       mainWindow.hide()
+    }
+  })
+
+  // Developer tools IPC handler
+  ipcMain.on('open-devtools', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.openDevTools({ mode: 'detach' })
+    }
+  })
+
+  // Settings IPC handler
+  ipcMain.handle('save-settings', (_event, settings) => {
+    try {
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+      return { success: true }
+    } catch (e) {
+      console.error('Failed to save settings:', e)
+      return { success: false, error: e.message }
     }
   })
 

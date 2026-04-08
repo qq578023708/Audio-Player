@@ -19,6 +19,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('window-state-changed', (_event, isMaximized) => callback(isMaximized))
   },
 
+  // Developer tools
+  openDevTools: () => ipcRenderer.send('open-devtools'),
+
+  // Settings
+  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+
   // API proxy for production (when no Vite dev server)
   // Intercepts /api/ requests and routes them through the main process
   // CRITICAL: We return a plain data object here, NOT a Response object.
