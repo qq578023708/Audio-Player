@@ -191,13 +191,18 @@ jobs:
       - name: Sync Capacitor Android
         run: npx cap sync android
 
-      - name: Clean and Build Android APK
+      - name: Verify assets before build
+        run: |
+          echo "=== Checking assets directory ==="
+          ls -laR android/app/src/main/assets/ 2>/dev/null || echo "No assets dir"
+          echo "=== Assets size ==="
+          du -sh android/app/src/main/assets/ 2>/dev/null || echo "No assets"
+
+      - name: Build Android APK
         working-directory: ./android
         run: |
-          # Clean to force assets regeneration
-          ./gradlew clean
-          # Build release APK
-          ./gradlew assembleRelease
+          # Build release APK (assets should already be synced by cap sync)
+          ./gradlew assembleRelease --rerun-tasks
 
       - name: Sign APK (optional)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}

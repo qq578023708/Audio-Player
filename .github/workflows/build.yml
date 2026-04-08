@@ -240,13 +240,11 @@ jobs:
           echo "=== Check public directory ==="
           ls -la android/app/src/main/assets/public/ 2>/dev/null || echo "No public dir"
 
-      - name: Clean and Build Android APK (Debug)
+      - name: Build Android APK (Debug)
         working-directory: ./android
         run: |
-          # Clean to force assets regeneration
-          ./gradlew clean
-          # Build debug APK
-          ./gradlew assembleDebug
+          # Build debug APK with --rerun-tasks to force assets packaging
+          ./gradlew assembleDebug --rerun-tasks
 
       - name: Check APK size
         run: |
