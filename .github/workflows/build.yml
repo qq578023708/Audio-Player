@@ -218,14 +218,29 @@ jobs:
       - name: Build web assets
         run: npm run build
 
-      - name: Add Capacitor Android platform (if not exists)
+      - name: Check dist contents
         run: |
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
+          echo "Dist directory contents:"
+          ls -la dist/
+          echo "Dist size:"
+          du -sh dist/
+
+      - name: Add Capacitor Android platform
+        run: npx cap add android
 
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        run: npx cap sync android --verbose
+
+      - name: Verify android assets
+        run: |
+          echo "=== Android app directory structure ==="
+          find android/app/src/main -type d | head -20
+          echo "=== Android assets ==="
+          ls -la android/app/src/main/assets/ 2>/dev/null || echo "No assets dir"
+          echo "=== Capacitor config ==="
+          cat capacitor.config.json
+          echo "=== Android app build.gradle ==="
+          head -50 android/app/build.gradle
 
       - name: Build Android APK
         working-directory: ./android
