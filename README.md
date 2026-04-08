@@ -1,7 +1,7 @@
 # AudioFlow Player
 
-[![Release](https://github.com/qq578023708/audioflow-player/actions/workflows/release.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/release.yml)
-[![CI Build](https://github.com/qq578023708/audioflow-player/actions/workflows/build.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/build.yml)
+[![Release](https://github.com/qq578023708/Audio-Player/actions/workflows/release.yml/badge.svg)](https://github.com/qq578023708/Audio-Player/actions/workflows/release.yml)
+[![CI Build](https://github.com/qq578023708/Audio-Player/actions/workflows/build.yml/badge.svg)](https://github.com/qq578023708/Audio-Player/actions/workflows/build.yml)
 
 跨平台网络音频播放器 — 支持 Windows / Linux / macOS / Android
 
