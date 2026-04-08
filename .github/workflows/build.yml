@@ -233,18 +233,23 @@ jobs:
 
       - name: Verify android assets
         run: |
-          echo "=== Android app directory structure ==="
-          find android/app/src/main -type d | head -20
-          echo "=== Android assets ==="
-          ls -la android/app/src/main/assets/ 2>/dev/null || echo "No assets dir"
-          echo "=== Capacitor config ==="
-          cat capacitor.config.json
-          echo "=== Android app build.gradle ==="
-          head -50 android/app/build.gradle
+          echo "=== Android assets directory ==="
+          ls -laR android/app/src/main/assets/ 2>/dev/null || echo "No assets dir"
+          echo "=== Assets directory size ==="
+          du -sh android/app/src/main/assets/ 2>/dev/null || echo "No assets"
+          echo "=== Check public directory ==="
+          ls -la android/app/src/main/assets/public/ 2>/dev/null || echo "No public dir"
 
-      - name: Build Android APK
+      - name: Build Android APK (Debug)
         working-directory: ./android
         run: ./gradlew assembleDebug
+
+      - name: Check APK size
+        run: |
+          echo "=== Debug APK ==="
+          ls -lh android/app/build/outputs/apk/debug/*.apk
+          echo "=== APK Content ==="
+          unzip -l android/app/build/outputs/apk/debug/*.apk | head -30
 
       - name: Upload
         uses: actions/upload-artifact@v4
