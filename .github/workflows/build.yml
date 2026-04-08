@@ -213,7 +213,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - run: npm ci
+      - run: npm install
 
       - name: Build web assets
         run: npm run build
