@@ -45,7 +45,7 @@ jobs:
         run: npm install
 
       - name: Build Vite + Electron (Windows)
-        run: npm run electron:build:win
+        run: npm run electron:build:win -- --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Code signing (optional — set these secrets in repo Settings)
@@ -83,7 +83,7 @@ jobs:
         run: npm install
 
       - name: Build Vite + Electron (macOS)
-        run: npm run electron:build:mac
+        run: npm run electron:build:mac -- --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Code signing (optional)
@@ -136,7 +136,7 @@ jobs:
         run: npm install
 
       - name: Build Vite + Electron (Linux)
-        run: npm run electron:build:linux
+        run: npm run electron:build:linux -- --publish=never
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
