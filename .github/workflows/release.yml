@@ -1,0 +1,245 @@
+name: Release — Multi-platform Build & Publish
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'          # Trigger on version tags, e.g. v1.0.0
+  workflow_dispatch:      # Allow manual trigger
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0) — leave empty to use package.json version'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+# Cancel in-progress runs for the same ref
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ─────────────────────────────────────────────
+  # Job 1: Build on Windows (NSIS x64 + arm64)
+  # ─────────────────────────────────────────────
+  build-windows:
+    name: Windows (x64 + arm64)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite + Electron (Windows)
+        run: npm run electron:build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing (optional — set these secrets in repo Settings)
+          # WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          # WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers
+          path: |
+            release/*.exe
+            release/*.msi
+            release/latest.yml
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ─────────────────────────────────────────────
+  # Job 2: Build on macOS (DMG universal)
+  # ─────────────────────────────────────────────
+  build-macos:
+    name: macOS (universal)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite + Electron (macOS)
+        run: npm run electron:build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Code signing (optional)
+          # CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dmg
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/latest-mac.yml
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ─────────────────────────────────────────────
+  # Job 3: Build on Linux (AppImage + deb x64)
+  # ─────────────────────────────────────────────
+  build-linux:
+    name: Linux (AppImage + deb x64)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            dpkg \
+            fakeroot
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Vite + Electron (Linux)
+        run: npm run electron:build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            release/*.AppImage
+            release/*.deb
+            release/latest-linux.yml
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ─────────────────────────────────────────────
+  # Job 4: Create GitHub Release (after all builds)
+  # ─────────────────────────────────────────────
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from package.json
+        id: pkg_version
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=v${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ steps.pkg_version.outputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: List release assets
+        run: find release-assets -type f | sort
+
+      - name: Read CHANGELOG entry (optional)
+        id: changelog
+        run: |
+          if [ -f CHANGELOG.md ]; then
+            # Extract the latest version block
+            NOTES=$(awk '/^## \[/{if(p)exit; p=1} p' CHANGELOG.md | head -60)
+            echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$NOTES" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          else
+            echo "notes=Auto-generated release for ${{ steps.tag.outputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: AudioFlow Player ${{ steps.tag.outputs.tag }}
+          body: |
+            ## AudioFlow Player ${{ steps.tag.outputs.tag }}
+
+            ${{ steps.changelog.outputs.notes }}
+
+            ---
+
+            ### 下载说明 / Download
+
+            | 平台 | 文件 | 说明 |
+            |------|------|------|
+            | Windows | `AudioFlow-Setup-*.exe` | NSIS 安装包（x64 / arm64）|
+            | macOS | `AudioFlow-*.dmg` | Universal 磁盘映像（Intel + Apple Silicon）|
+            | Linux | `AudioFlow-*.AppImage` | AppImage（x64，无需安装）|
+            | Linux | `audioflow-player_*.deb` | Debian/Ubuntu 软件包（x64）|
+
+            > **macOS 用户**：首次打开 DMG 如提示"无法验证开发者"，请右键 → 打开。
+
+            ---
+            _Built with Electron ${{ env.ELECTRON_VERSION }} · Vue 3 · Vite_
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          files: |
+            release-assets/windows-installers/*.exe
+            release-assets/windows-installers/*.msi
+            release-assets/windows-installers/latest.yml
+            release-assets/macos-dmg/*.dmg
+            release-assets/macos-dmg/*.zip
+            release-assets/macos-dmg/latest-mac.yml
+            release-assets/linux-packages/*.AppImage
+            release-assets/linux-packages/*.deb
+            release-assets/linux-packages/latest-linux.yml
+          generate_release_notes: false
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

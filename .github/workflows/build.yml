@@ -1,0 +1,184 @@
+name: CI — Build Check
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'docs/**'
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Target platform'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
+          - linux
+
+# Cancel in-progress runs for the same ref
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ─────────────────────────────────────────
+  # Type check + Vite build (fast, no Electron)
+  # ─────────────────────────────────────────
+  typecheck-and-build:
+    name: Type Check + Web Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx vue-tsc -b --noEmit
+
+      - name: Build (web only)
+        run: npx vite build
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-web
+          path: dist/
+          retention-days: 3
+
+  # ─────────────────────────────────────────
+  # Electron build — Windows
+  # ─────────────────────────────────────────
+  build-windows:
+    name: Electron Windows
+    runs-on: windows-latest
+    if: |
+      github.event.inputs.platform == 'all' ||
+      github.event.inputs.platform == 'windows' ||
+      github.event.inputs.platform == ''  ||
+      github.event_name != 'workflow_dispatch'
+    needs: typecheck-and-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Electron build (Windows)
+        run: npm run electron:build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-windows
+          path: release/*.exe
+          if-no-files-found: warn
+          retention-days: 3
+
+  # ─────────────────────────────────────────
+  # Electron build — macOS
+  # ─────────────────────────────────────────
+  build-macos:
+    name: Electron macOS
+    runs-on: macos-latest
+    if: |
+      github.event.inputs.platform == 'all' ||
+      github.event.inputs.platform == 'macos' ||
+      github.event.inputs.platform == ''  ||
+      github.event_name != 'workflow_dispatch'
+    needs: typecheck-and-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Electron build (macOS)
+        run: npm run electron:build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-macos
+          path: release/*.dmg
+          if-no-files-found: warn
+          retention-days: 3
+
+  # ─────────────────────────────────────────
+  # Electron build — Linux
+  # ─────────────────────────────────────────
+  build-linux:
+    name: Electron Linux
+    runs-on: ubuntu-latest
+    if: |
+      github.event.inputs.platform == 'all' ||
+      github.event.inputs.platform == 'linux' ||
+      github.event.inputs.platform == ''  ||
+      github.event_name != 'workflow_dispatch'
+    needs: typecheck-and-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            libgtk-3-dev \
+            libwebkit2gtk-4.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            dpkg \
+            fakeroot
+
+      - run: npm ci
+
+      - name: Electron build (Linux)
+        run: npm run electron:build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-linux
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: warn
+          retention-days: 3
