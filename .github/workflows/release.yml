@@ -218,17 +218,23 @@ jobs:
 
       - name: Decode keystore
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+          # 使用 printf 避免 echo 的转义问题
+          printf '%s' '${{ secrets.ANDROID_KEYSTORE_BASE64 }}' | base64 -d > android/app/keystore.jks
+          ls -la android/app/keystore.jks
 
       - name: Sign APK
         working-directory: ./android
         run: |
-          # 使用 apksigner 签名（注意参数顺序：输入APK必须在最后）
+          # 检查 keystore 文件
+          echo "=== Keystore info ==="
+          keytool -list -v -keystore app/keystore.jks -storepass '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' 2>&1 | head -20 || echo "Keytool failed"
+          
+          # 使用 apksigner 签名
           $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
             --ks app/keystore.jks \
-            --ks-key-alias "${{ secrets.ANDROID_KEY_ALIAS }}" \
-            --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
-            --key-pass "pass:${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            --ks-key-alias '${{ secrets.ANDROID_KEY_ALIAS }}' \
+            --ks-pass 'pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' \
+            --key-pass 'pass:${{ secrets.ANDROID_KEY_PASSWORD }}' \
             --out app/build/outputs/apk/release/app-release-signed.apk \
             app/build/outputs/apk/release/app-release-unsigned.apk
           
