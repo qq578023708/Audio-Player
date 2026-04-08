@@ -14,26 +14,6 @@ import type {
   ParsedSourcePlugin,
 } from '@/types'
 import { createLxEngine, getLxEngine, destroyLxEngine, type LxEngineInstance } from './lxEngine'
-import { isCapacitor } from '@/composables/usePlatform'
-
-// API base URLs for different environments
-const API_BASES = {
-  kuwo: 'https://kuwo.cn',
-  kugou: 'http://mobilecdnbj.kugou.com',
-  qqmusic: 'https://u.y.qq.com',
-  netease: 'https://music.163.com',
-  migu: 'https://pd.musicapp.migu.cn',
-}
-
-// Get API URL based on platform (web uses proxy, Capacitor uses direct)
-function getApiUrl(proxyPath: string, targetBase: string): string {
-  if (isCapacitor()) {
-    // In Capacitor, use direct API URL
-    return targetBase + proxyPath.replace(/^\/api\/[^/]+/, '')
-  }
-  // In web/Electron, use proxy path
-  return proxyPath
-}
 
 // ===== Search API =====
 
@@ -673,14 +653,7 @@ const BOARD_FETCHERS: Record<string, BoardFetcher> = {
 
 // ---- Kuwo Board Fetcher ----
 // Uses wbdCrypto encrypted API via server-side proxy (/api/kw-board)
-// NOTE: In Capacitor, this requires the proxy server or will fail
 async function fetchKwBoard(bangid: string, page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  // Kuwo board requires encryption which is done by the proxy server
-  // In Capacitor, we need to use a different approach or skip Kuwo boards
-  if (isCapacitor()) {
-    console.warn('[Board] Kuwo board not supported in Capacitor (requires encryption)')
-    return { items: [], total: 0 }
-  }
   const resp = await fetch(`/api/kw-board/songs?id=${bangid}&page=${page}&limit=${limit}`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   const rawData = await resp.json()
@@ -711,11 +684,9 @@ async function fetchKwBoard(bangid: string, page: number, limit: number): Promis
 // ---- Kugou Board Fetcher ----
 // API: http://mobilecdnbj.kugou.com/api/v3/rank/song
 async function fetchKgBoard(bangid: string, page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  const url = getApiUrl(
-    `/api/kugou/api/v3/rank/song?version=9108&ranktype=1&plat=0&pagesize=${limit}&area_code=1&page=${page}&rankid=${bangid}&with_res_tag=0&show_portrait_mv=1`,
-    API_BASES.kugou
+  const resp = await fetch(
+    `/api/kugou/api/v3/rank/song?version=9108&ranktype=1&plat=0&pagesize=${limit}&area_code=1&page=${page}&rankid=${bangid}&with_res_tag=0&show_portrait_mv=1`
   )
-  const resp = await fetch(url)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   const data = await resp.json()
   if (data.errcode != 0) throw new Error(data.errcode?.toString())
@@ -739,8 +710,7 @@ async function fetchKgBoard(bangid: string, page: number, limit: number): Promis
 // ---- QQ Music Board Fetcher ----
 // API: https://u.y.qq.com/cgi-bin/musicu.fcg (POST)
 async function fetchTxBoard(bangid: string, _page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  const url = getApiUrl('/api/qqmusic/cgi-bin/musicu.fcg', API_BASES.qqmusic)
-  const resp = await fetch(url, {
+  const resp = await fetch('/api/qqmusic/cgi-bin/musicu.fcg', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -778,8 +748,7 @@ async function fetchTxBoard(bangid: string, _page: number, limit: number): Promi
 // API: https://music.163.com/weapi/v3/playlist/detail (POST with weapi crypto — simplified via proxy)
 async function fetchWyBoard(bangid: string, _page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
   // Use the simpler non-encrypted endpoint via proxy
-  const url = getApiUrl(`/api/netease/api/v6/playlist/detail?id=${bangid}&n=${limit}&s=0`, API_BASES.netease)
-  const resp = await fetch(url)
+  const resp = await fetch(`/api/netease/api/v6/playlist/detail?id=${bangid}&n=${limit}&s=0`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   const data = await resp.json()
   if (data.code !== 200) throw new Error(data.code?.toString())
@@ -802,11 +771,8 @@ async function fetchWyBoard(bangid: string, _page: number, limit: number): Promi
 // ---- Migu Board Fetcher ----
 // API: https://app.c.nf.migu.cn/MIGUM2.0/v1.0/content/querycontentbyId.do
 async function fetchMgBoard(bangid: string, _page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
-  const url = getApiUrl(
+  const resp = await fetch(
     `/api/migu/MIGUM2.0/v1.0/content/querycontentbyId.do?columnId=${bangid}&needAll=0&pageSize=${limit}`,
-    API_BASES.migu
-  )
-  const resp = await fetch(url,
     {
       headers: {
         'Referer': 'https://app.c.nf.migu.cn/',

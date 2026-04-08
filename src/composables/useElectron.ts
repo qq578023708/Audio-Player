@@ -16,8 +16,6 @@ interface ElectronAPI {
   close: () => void
   isMaximized: () => Promise<boolean>
   onWindowStateChanged: (callback: (isMaximized: boolean) => void) => void
-  openDevTools: () => void
-  saveSettings: (settings: Record<string, any>) => Promise<{ success: boolean; error?: string }>
 }
 
 declare global {
