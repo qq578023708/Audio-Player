@@ -218,21 +218,26 @@ jobs:
 
       - name: Decode keystore
         run: |
-          # 检查 secret 是否存在
-          if [ -z "${{ secrets.ANDROID }}" ]; then
-            echo "Error: ANDROID secret is not set!"
+          # 检查 secrets 是否存在
+          if [ -z "${{ secrets.ANDROID_KEYSTORE }}" ]; then
+            echo "Error: ANDROID_KEYSTORE secret is not set!"
             exit 1
           fi
-          # 调试：显示 secret 长度和前50个字符
-          SECRET_CONTENT='${{ secrets.ANDROID }}'
-          echo "Secret length: ${#SECRET_CONTENT}"
-          echo "Secret first 50 chars: ${SECRET_CONTENT:0:50}"
-          # 解码 base64（使用 -w 0 格式）
+          if [ -z "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" ]; then
+            echo "Error: ANDROID_KEYSTORE_PASSWORD secret is not set!"
+            exit 1
+          fi
+          
+          # 调试：显示 secret 长度
+          SECRET_CONTENT='${{ secrets.ANDROID_KEYSTORE }}'
+          echo "Keystore secret length: ${#SECRET_CONTENT}"
+          
+          # 解码 base64
           echo "$SECRET_CONTENT" | base64 -d > android/app/keystore.jks 2>&1 || {
             echo "Base64 decode failed. Trying with tr to remove newlines..."
             echo "$SECRET_CONTENT" | tr -d '\n\r' | base64 -d > android/app/keystore.jks
           }
-          ls -la android/app/keystore.jks
+          
           # 检查文件大小
           FILESIZE=$(stat -c%s "android/app/keystore.jks")
           if [ $FILESIZE -eq 0 ]; then
@@ -246,14 +251,14 @@ jobs:
         run: |
           # 检查 keystore 文件
           echo "=== Keystore info ==="
-          keytool -list -v -keystore app/keystore.jks -storepass '${{ secrets.ANDROID }}' 2>&1 | head -20 || echo "Keytool failed"
+          keytool -list -v -keystore app/keystore.jks -storepass '${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' 2>&1 | head -20 || echo "Keytool failed"
           
           # 使用 apksigner 签名
           $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
             --ks app/keystore.jks \
-            --ks-key-alias '${{ secrets.ANDROID }}' \
-            --ks-pass 'pass:${{ secrets.ANDROID }}' \
-            --key-pass 'pass:${{ secrets.ANDROID }}' \
+            --ks-key-alias '${{ secrets.ANDROID_KEY_ALIAS }}' \
+            --ks-pass 'pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }}' \
+            --key-pass 'pass:${{ secrets.ANDROID_KEY_PASSWORD }}' \
             --out app/build/outputs/apk/release/app-release-signed.apk \
             app/build/outputs/apk/release/app-release-unsigned.apk
           
