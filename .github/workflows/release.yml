@@ -216,19 +216,31 @@ jobs:
           echo "=== APK file size ==="
           du -sh app/build/outputs/apk/release/*.apk
 
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/keystore.jks
+
       - name: Sign APK
-        uses: r0adkll/sign-android-release@v1
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        with:
-          releaseDirectory: android/app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        working-directory: ./android
+        run: |
+          # 使用 apksigner 签名
+          $ANDROID_HOME/build-tools/34.0.0/apksigner sign \
+            --ks app/keystore.jks \
+            --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
+            --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            --key-pass pass:${{ secrets.ANDROID_KEY_PASSWORD }} \
+            --out app/build/outputs/apk/release/app-release-signed.apk \
+            app/build/outputs/apk/release/app-release-unsigned.apk
+          
+          # 验证签名
+          $ANDROID_HOME/build-tools/34.0.0/apksigner verify app/build/outputs/apk/release/app-release-signed.apk
+          
+          # 删除未签名文件和密钥
+          rm app/build/outputs/apk/release/app-release-unsigned.apk
+          rm app/keystore.jks
+          
+          echo "=== Signed APK ==="
+          ls -la app/build/outputs/apk/release/
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
