@@ -108,6 +108,7 @@ export interface LxSourceCapability {
 export interface LxMusicInfo {
   id?: string              // songmid / hash
   songmid?: string
+  hash?: string            // Kugou specific
   name?: string
   singer?: string
   album?: string

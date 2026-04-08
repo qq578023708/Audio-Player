@@ -1,7 +1,7 @@
 # AudioFlow Player
 
-[![Release](https://github.com/qq578023708/audioflow-player/actions/workflows/release.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/release.yml)
-[![CI Build](https://github.com/qq578023708/audioflow-player/actions/workflows/build.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/build.yml)
+[![Release](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/release.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/release.yml)
+[![CI Build](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/build.yml/badge.svg)](https://github.com/<YOUR_USERNAME>/audioflow-player/actions/workflows/build.yml)
 
 跨平台网络音频播放器 — 支持 Windows / Linux / macOS / Android
 
@@ -66,20 +66,36 @@ npm run electron:build:linux
 
 构建产物在 `release/` 目录下。
 
-### 5. Android 移动端
+### 5. 构建 Android 应用
 
 ```bash
-# 初始化 Capacitor（首次）
-npm run cap:init
-
-# 添加 Android 平台
+# 添加 Android 平台（首次）
 npm run cap:add:android
 
-# 构建 Web 资源并同步到原生项目
+# 构建 Web 资源并同步
 npm run build
 npm run cap:sync
 
-# 用 Android Studio 打开
+# 构建 Debug APK
+cd android && ./gradlew assembleDebug
+
+# 构建 Release APK（需要签名配置）
+cd android && ./gradlew assembleRelease
+```
+
+APK 产物在 `android/app/build/outputs/apk/` 目录下。
+
+### 6. 用 Android Studio 开发
+
+```bash
+# 添加 Android 平台
+npm run cap:add:android
+
+# 构建并同步
+npm run build
+npm run cap:sync
+
+# 打开 Android Studio
 npm run cap:open:android
 ```
 
@@ -98,13 +114,28 @@ npm run cap:open:android
 | `P` | 上一曲 |
 | `M` | 静音切换 |
 
+## CI/CD 自动构建
+
+项目配置了 GitHub Actions 自动构建：
+
+- **CI Build** (`.github/workflows/build.yml`): Push/PR 时触发类型检查和构建
+- **Release** (`.github/workflows/release.yml`): Push tag `v*.*.*` 时触发多平台发布
+
+支持平台：
+| 平台 | 产物 |
+|------|------|
+| Windows | `.exe` (NSIS 安装包) |
+| macOS | `.dmg` (Universal) |
+| Linux | `.AppImage`, `.deb` |
+| Android | `.apk` |
+
 ## 项目结构
 
 ```
 audio-player/
 ├── electron/               # Electron 主进程
-│   ├── main.js             # 主进程入口
-│   └── preload.js          # 预加载脚本
+│   ├── main.cjs            # 主进程入口
+│   └── preload.cjs         # 预加载脚本
 ├── src/
 │   ├── components/         # Vue 组件
 │   │   ├── SvgIcon.vue     # SVG 图标组件

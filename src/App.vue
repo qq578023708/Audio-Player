@@ -6,7 +6,14 @@ import Sidebar from './components/Sidebar.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import TitleBar from './components/TitleBar.vue'
 import SvgIcon from './components/SvgIcon.vue'
-import { useRoute } from 'vue-router'
+import { useRoute, type RouteMeta } from 'vue-router'
+
+// Extend RouteMeta to include transition
+declare module 'vue-router' {
+  interface RouteMeta {
+    transition?: string
+  }
+}
 
 const player = useAudioPlayer()
 const store = usePlaylistStore()
@@ -55,7 +62,6 @@ onMounted(() => {
 })
 
 // Watch current track and add to history
-import { watch } from 'vue'
 watch(() => player.currentTrack.value, (track) => {
   if (track) {
     store.addToHistory(track)

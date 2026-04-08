@@ -565,7 +565,7 @@ const MG_BOARDS: ChartBoardInfo[] = [
   { id: 'mgrcb', name: '原创榜', bangid: '23604032', source: 'mg' },
 ]
 
-const ALL_BOARDS: Record<MusicSource, ChartBoardInfo[]> = {
+const ALL_BOARDS: Partial<Record<MusicSource, ChartBoardInfo[]>> = {
   kw: KW_BOARDS,
   kg: KG_BOARDS,
   tx: TX_BOARDS,
@@ -831,6 +831,12 @@ export interface SongListTag {
   name: string
   parentId?: string
   parentName?: string
+  source?: MusicSource
+}
+
+export interface SongListTagCategory {
+  name: string
+  list: SongListTag[]
 }
 
 export interface SongListItem {
@@ -854,7 +860,7 @@ export interface SongListDetailInfo {
 }
 
 export interface SongListTagsResult {
-  tags: SongListTag[][]
+  tags: SongListTagCategory[]
   hotTag: SongListTag[]
   source: MusicSource
 }
@@ -965,7 +971,7 @@ async function fetchKwSongListTags(): Promise<SongListTagsResult> {
   const tagsData = await tagsResp.json()
   const hotData = await hotResp.json()
 
-  const tags: SongListTag[][] = (tagsData?.data || []).map((type: any) => ({
+  const tags: SongListTagCategory[] = (tagsData?.data || []).map((type: any) => ({
     name: type.name,
     list: (type.data || []).map((item: any) => ({
       id: `${item.id}-${item.digest}`,
@@ -1144,7 +1150,7 @@ async function searchKwSongList(text: string, page: number, limit: number): Prom
 // Simplified — Kugou songList API is more complex (requires signature), use search instead
 async function fetchKgSongListTags(): Promise<SongListTagsResult> {
   // Kugou tags API requires app signature, use simplified static tags
-  const tags: SongListTag[][] = [
+  const tags: SongListTagCategory[] = [
     {
       name: '语种',
       list: [
@@ -1243,7 +1249,7 @@ async function fetchLyricFromSourceApi(musicInfo: LxMusicInfo, track?: Track): P
     case 'tx':
       return fetchQQLyrics(songmid!)
     case 'kg':
-      return fetchKugouLyrics(hash || id!)
+      return fetchKugouLyrics(hash || id || '')
     case 'mg':
       return fetchMiguLyrics(id!)
     default:

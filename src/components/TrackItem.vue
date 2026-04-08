@@ -46,6 +46,7 @@
 import type { Track } from '@/types'
 import SvgIcon from './SvgIcon.vue'
 import { useAudioPlayer } from '@/composables/useAudioPlayer'
+import { computed } from 'vue'
 
 const props = defineProps<{
   track: Track
@@ -58,9 +59,7 @@ const emit = defineEmits<{
 
 const player = useAudioPlayer()
 
-const isActive = () => {
-  return player.currentTrack.value?.id === props.track.id
-}
+const isActive = computed(() => player.currentTrack.value?.id === props.track.id)
 
 function removeTrack(index: number) {
   emit('remove', index)

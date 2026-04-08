@@ -21,6 +21,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron/**/*.ts"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "electron/**/*.ts"]
 }

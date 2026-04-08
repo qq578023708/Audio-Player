@@ -252,7 +252,7 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
       if (buf._lxBuf instanceof Uint8Array) {
         const data = buf._lxBuf
         if (encoding === 'hex')
-          return Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('')
+          return Array.from(data).map((b) => (b as number).toString(16).padStart(2, '0')).join('')
         if (encoding === 'base64') return btoa(String.fromCharCode(...data))
         return new TextDecoder(encoding || 'utf8').decode(data)
       }
@@ -292,7 +292,7 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
           ? CryptoJS.mode.ECB
           : CryptoJS.mode.CBC
 
-        const cfg: CryptoJS.lib.IBlockCipherCfgOptions = { mode: cjsMode, padding: CryptoJS.pad.Pkcs7 }
+        const cfg: any = { mode: cjsMode, padding: CryptoJS.pad.Pkcs7 }
         if (ivStr && modeUpper !== 'ECB') cfg.iv = ivStr
 
         const encrypted = CryptoJS.AES.encrypt(dataStr, keyStr, cfg)
@@ -818,7 +818,7 @@ function toUint8Array(buf: any): Uint8Array {
 
 // ===== CryptoJS helpers =======================================================
 
-function bufOrStrToWordArray(input: any): CryptoJS.lib.WordArray {
+function bufOrStrToWordArray(input: any): any {
   if (typeof input === 'string') return CryptoJS.enc.Utf8.parse(input)
   const u8 = toUint8Array(input)
   // Convert Uint8Array → WordArray
@@ -834,7 +834,7 @@ function bufOrStrToWordArray(input: any): CryptoJS.lib.WordArray {
   return CryptoJS.lib.WordArray.create(words, u8.length)
 }
 
-function wordArrayToUint8Array(wa: CryptoJS.lib.WordArray): Uint8Array {
+function wordArrayToUint8Array(wa: any): Uint8Array {
   const words = wa.words
   const sigBytes = wa.sigBytes
   const out = new Uint8Array(sigBytes)

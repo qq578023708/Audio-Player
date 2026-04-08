@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "description": "AudioFlow - Cross-platform network audio player (Vue3 + Electron + Capacitor)",
-  "author": "AudioFlow",
+  "author": {
+    "name": "AudioFlow",
+    "email": "hongjian1122@sina.com"
+  },
   "license": "MIT",
   "scripts": {
     "dev": "vite",

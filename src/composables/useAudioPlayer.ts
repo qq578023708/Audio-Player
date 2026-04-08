@@ -48,7 +48,8 @@ async function setAudioOutputDevice(deviceId: string) {
 async function applySinkId(deviceId: string) {
   // Howler.js html5 mode uses HTMLAudioElement internally
   // We need to access the underlying audio element to call setSinkId
-  const html5Audio = Howler._html5AudioPool?.[0] || Howler.ctx?.createMediaElementSource?.({})?.mediaStream?.getAudioTracks?.()[0]
+  const howlerAny = Howler as any
+  const html5Audio = howlerAny._html5AudioPool?.[0] || howlerAny.ctx?.createMediaElementSource?.({})?.mediaStream?.getAudioTracks?.()[0]
   
   // Alternative: access via Howler's internal audio pool
   // Howler with html5: true creates Audio elements, stored in _audioPool
