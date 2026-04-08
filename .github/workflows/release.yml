@@ -182,11 +182,12 @@ jobs:
       - name: Build web assets
         run: npm run build
 
-      - name: Add Capacitor Android platform (if not exists)
+      - name: Clean and setup Android platform
         run: |
-          if [ ! -d "android" ]; then
-            npx cap add android
-          fi
+          # 完全删除旧的 android 目录，确保全新构建
+          rm -rf android
+          # 重新添加 Android 平台
+          npx cap add android
 
       - name: Sync Capacitor Android
         run: npx cap sync android
@@ -197,12 +198,18 @@ jobs:
           ls -laR android/app/src/main/assets/ 2>/dev/null || echo "No assets dir"
           echo "=== Assets size ==="
           du -sh android/app/src/main/assets/ 2>/dev/null || echo "No assets"
+          echo "=== Check APK output directory ==="
+          ls -la android/app/build/outputs/apk/release/ 2>/dev/null || echo "No APK dir yet"
 
       - name: Build Android APK
         working-directory: ./android
         run: |
-          # Build release APK (assets should already be synced by cap sync)
-          ./gradlew assembleRelease --rerun-tasks
+          # 首次构建（全新项目，不会有缓存问题）
+          ./gradlew assembleRelease
+          echo "=== APK build complete ==="
+          ls -la app/build/outputs/apk/release/
+          echo "=== APK file size ==="
+          du -sh app/build/outputs/apk/release/*.apk
 
       - name: Sign APK (optional)
         if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}

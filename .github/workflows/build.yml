@@ -225,8 +225,12 @@ jobs:
           echo "Dist size:"
           du -sh dist/
 
-      - name: Add Capacitor Android platform
-        run: npx cap add android
+      - name: Clean and setup Android platform
+        run: |
+          # 完全删除旧的 android 目录，确保全新构建
+          rm -rf android
+          # 重新添加 Android 平台
+          npx cap add android
 
       - name: Sync Capacitor Android
         run: npx cap sync android
@@ -243,8 +247,10 @@ jobs:
       - name: Build Android APK (Debug)
         working-directory: ./android
         run: |
-          # Build debug APK with --rerun-tasks to force assets packaging
-          ./gradlew assembleDebug --rerun-tasks
+          # 首次构建（全新项目，不会有缓存问题）
+          ./gradlew assembleDebug
+          echo "=== APK build complete ==="
+          ls -la app/build/outputs/apk/debug/
 
       - name: Check APK size
         run: |
