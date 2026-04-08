@@ -23,3 +23,21 @@ release
 *.njsproj
 *.sln
 *.sw?
+
+# Android Keystore and signing files
+*.keystore
+*.jks
+*.p12
+*.pfx
+keystore.base64.txt
+keystore.properties
+
+# Build outputs
+dist
+dist-ssr
+release
+build-out.txt
+
+# Scripts for local use
+generate-keystore.ps1
+generate-keystore.bat
