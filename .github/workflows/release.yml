@@ -182,12 +182,11 @@ jobs:
       - name: Build web assets
         run: npm run build
 
-      - name: Clean and setup Android platform
+      - name: Add Capacitor Android platform (if not exists)
         run: |
-          # 完全删除旧的 android 目录，确保全新构建
-          rm -rf android
-          # 重新添加 Android 平台
-          npx cap add android
+          if [ ! -d "android" ]; then
+            npx cap add android
+          fi
 
       - name: Sync Capacitor Android
         run: npx cap sync android
@@ -201,22 +200,36 @@ jobs:
           echo "=== Check APK output directory ==="
           ls -la android/app/build/outputs/apk/release/ 2>/dev/null || echo "No APK dir yet"
 
-      - name: Build Android APK (Debug - signed)
+      - name: Build Android APK (Release)
         working-directory: ./android
         run: |
-          # 构建 debug 版本（自动带有 debug 签名，可直接安装）
-          ./gradlew assembleDebug
+          # 构建 release 版本（未签名）
+          ./gradlew assembleRelease
           echo "=== APK build complete ==="
-          ls -la app/build/outputs/apk/debug/
+          ls -la app/build/outputs/apk/release/
           echo "=== APK file size ==="
-          du -sh app/build/outputs/apk/debug/*.apk
+          du -sh app/build/outputs/apk/release/*.apk
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v1
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        with:
+          releaseDirectory: android/app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: |
-            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/release/*-signed.apk
           if-no-files-found: warn
           retention-days: 7
 
