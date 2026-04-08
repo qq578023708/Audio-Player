@@ -201,37 +201,22 @@ jobs:
           echo "=== Check APK output directory ==="
           ls -la android/app/build/outputs/apk/release/ 2>/dev/null || echo "No APK dir yet"
 
-      - name: Build Android APK
+      - name: Build Android APK (Debug - signed)
         working-directory: ./android
         run: |
-          # 首次构建（全新项目，不会有缓存问题）
-          ./gradlew assembleRelease
+          # 构建 debug 版本（自动带有 debug 签名，可直接安装）
+          ./gradlew assembleDebug
           echo "=== APK build complete ==="
-          ls -la app/build/outputs/apk/release/
+          ls -la app/build/outputs/apk/debug/
           echo "=== APK file size ==="
-          du -sh app/build/outputs/apk/release/*.apk
-
-      - name: Sign APK (optional)
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
-        uses: r0adkll/sign-android-release@v1
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        with:
-          releaseDirectory: android/app/build/outputs/apk/release
-          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          du -sh app/build/outputs/apk/debug/*.apk
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
           path: |
-            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
           retention-days: 7
 
