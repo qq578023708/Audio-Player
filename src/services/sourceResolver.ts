@@ -740,31 +740,38 @@ const BOARD_FETCHERS: Record<string, BoardFetcher> = {
 
 // ---- Kuwo Board Fetcher ----
 // Web dev: use /api/kw-board (Vite plugin with AES encryption)
-// Android/iOS: use qukudata.kuwo.cn public API (no encryption needed)
+// Android/iOS: use kuwo.cn public API (no encryption needed)
 async function fetchKwBoard(bangid: string, page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
   if (isCapacitor()) {
     // Direct public API — no AES encryption, works on mobile
+    // Use kuwo.cn's public leaderboard API (same endpoint as their web player)
     const resp = await fetch(
-      `http://qukudata.kuwo.cn/q.k?op=query&cont=ninfo&node=${bangid}&pn=${page - 1}&rn=${limit}&fmt=json&level=2`,
-      { headers: { 'Referer': 'http://www.kuwo.cn/' } }
+      `http://wapi.kuwo.cn/api/www/bang/bang/musicList?bangId=${bangid}&pn=${page - 1}&rn=${limit}&httpsStatus=1`,
+      {
+        headers: {
+          'Referer': 'http://www.kuwo.cn/',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }
+      }
     )
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const rawData = await resp.json()
 
-    // Response shape: { child: [ { id, name, artist, album, pic, ... } ] }
-    const list: any[] = rawData.child || rawData.data?.child || []
-    if (list.length === 0) throw new Error(`qukudata 返回空列表 (node=${bangid})`)
+    // Response shape: { data: { musicList: [ { rid, name, artist, album, pic, ... } ] } }
+    const list: any[] = rawData.data?.musicList || []
+    if (list.length === 0) throw new Error(`kuwo 返回空列表 (bangId=${bangid})`)
 
     const decodeName = (str: string) => {
       try { return decodeURIComponent(escape(str)) } catch { return str }
     }
+    const formatSinger = (str: string) => str.replace(/&/g, '、')
     return {
-      total: list.length,
+      total: parseInt(rawData.data?.num) || list.length,
       items: list.map((s: any) => ({
-        id: (s.id || s.musicrid || '').toString().replace(/^MUSIC_/, ''),
+        id: (s.rid || s.id || s.musicrid || '').toString().replace(/^MUSIC_/, ''),
         source: 'kw' as MusicSource,
         name: decodeName(s.name || s.title || ''),
-        singer: decodeName(s.artist || s.singer || ''),
+        singer: formatSinger(decodeName(s.artist || s.singer || '')),
         album: decodeName(s.album || ''),
         albumPic: s.pic || s.albumpic || '',
         duration: s.duration ? parseInt(s.duration) : undefined,

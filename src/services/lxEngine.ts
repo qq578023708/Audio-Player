@@ -158,8 +158,11 @@ function createEngineInstance(plugin: ParsedSourcePlugin) {
     let fetchUrl: string
     let fetchInit: RequestInit
 
-    if (isExternal && !isLocal && !url.startsWith(window.location.origin)) {
-      // Route through our Vite dev-server CORS proxy
+    // In Capacitor mobile apps, CapacitorHttp handles CORS natively — no proxy needed
+    const isCapacitor = !!(window as any).Capacitor?.isNativePlatform?.()
+
+    if (isExternal && !isLocal && !url.startsWith(window.location.origin) && !isCapacitor) {
+      // Web/Electron: route through our Vite dev-server CORS proxy
       fetchUrl = '/api/cors-proxy'
       const proxyBody: Record<string, unknown> = { url, method }
       if (Object.keys(reqHeaders).length) proxyBody.headers = reqHeaders
