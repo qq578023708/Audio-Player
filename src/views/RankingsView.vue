@@ -40,12 +40,6 @@
       <button class="retry-btn" @click="fetchCharts">重试</button>
     </div>
 
-    <!-- Partial load: charts loaded but some boards failed -->
-    <div class="warn-bar" v-if="!isLoading && !errorMsg && boardErrors.length > 0">
-      <SvgIcon name="alert-circle" :size="14" />
-      <span>部分榜单加载失败</span>
-    </div>
-
     <!-- Charts -->
     <template v-else>
       <section v-for="chart in charts" :key="chart.id" class="chart-section">
@@ -356,30 +350,6 @@ onMounted(() => {
 
 .retry-btn:hover {
   background: var(--accent-hover);
-}
-
-/* Partial load warning bar */
-.warn-bar {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 10px 14px;
-  background: rgba(245, 158, 11, 0.1);
-  border: 1px solid rgba(245, 158, 11, 0.25);
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  color: #f59e0b;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.warn-bar svg {
-  flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.warn-bar span {
-  flex: 1;
 }
 
 .chart-section {

@@ -855,10 +855,10 @@ select:focus {
 }
 
 /* Log level colors - explicit hex for visibility */
-.log-line .log-level.log { color: #6b7280; }
-.log-line .log-level.info { color: #3b82f6; }
-.log-line .log-level.warn { color: #f59e0b; }
-.log-line .log-level.error { color: #ef4444; }
+.log-line.log .log-level { color: #6b7280; }
+.log-line.info .log-level { color: #3b82f6; }
+.log-line.warn .log-level { color: #f59e0b; }
+.log-line.error .log-level { color: #ef4444; }
 
 .log-line .log-message {
   color: var(--text-primary);
