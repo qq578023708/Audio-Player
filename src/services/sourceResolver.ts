@@ -73,13 +73,8 @@ async function platformFetch(url: string, options?: RequestInit): Promise<Respon
 /** Transform /api/xxx URLs to direct API URLs for mobile platforms */
 function transformApiUrlToDirect(url: string): string {
   // Map of proxy paths to direct API URLs
+  // Note: kw-board is handled separately in fetchKwBoard (uses different API on mobile)
   const proxyMap: Record<string, (path: string, query: string) => string> = {
-    '/api/kw-board/songs': (path, query) => {
-      // For kw-board, we need to handle the encrypted API
-      // This requires server-side decryption, so we'll return a special marker
-      // The actual implementation will need a backend proxy
-      return `https://wbd.kuwo.cn/api/bd/bang/bang_info${query}`
-    },
     '/api/kugou/': (path, query) => `http://mobilecdnbj.kugou.com${path.replace('/api/kugou', '')}${query}`,
     '/api/qqmusic/': (path, query) => `https://u.y.qq.com${path.replace('/api/qqmusic', '')}${query}`,
     '/api/netease/': (path, query) => `https://music.163.com${path.replace('/api/netease', '')}${query}`,
@@ -679,6 +674,7 @@ export function getAllBoards(): ChartBoardInfo[] {
 
 /**
  * Fetch a single board's song list by board id
+ * Throws on error so callers can capture the message.
  */
 export async function fetchBoardSongs(
   source: MusicSource,
@@ -688,12 +684,8 @@ export async function fetchBoardSongs(
 ): Promise<{ items: ChartSongItem[]; total: number }> {
   const fetcher = BOARD_FETCHERS[source]
   if (!fetcher) return { items: [], total: 0 }
-  try {
-    return await fetcher(bangid, page, limit)
-  } catch (e) {
-    console.warn(`[SourceResolver] Board fetch failed for ${source}/${bangid}:`, e)
-    return { items: [], total: 0 }
-  }
+  // Let exceptions propagate — callers (fetchChartList) handle them
+  return await fetcher(bangid, page, limit)
 }
 
 /**
@@ -747,8 +739,40 @@ const BOARD_FETCHERS: Record<string, BoardFetcher> = {
 }
 
 // ---- Kuwo Board Fetcher ----
-// Uses wbdCrypto encrypted API via server-side proxy (/api/kw-board)
+// Web dev: use /api/kw-board (Vite plugin with AES encryption)
+// Android/iOS: use qukudata.kuwo.cn public API (no encryption needed)
 async function fetchKwBoard(bangid: string, page: number, limit: number): Promise<{ items: ChartSongItem[]; total: number }> {
+  if (isCapacitor()) {
+    // Direct public API — no AES encryption, works on mobile
+    const resp = await fetch(
+      `http://qukudata.kuwo.cn/q.k?op=query&cont=ninfo&node=${bangid}&pn=${page - 1}&rn=${limit}&fmt=json&level=2`,
+      { headers: { 'Referer': 'http://www.kuwo.cn/' } }
+    )
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+    const rawData = await resp.json()
+
+    // Response shape: { child: [ { id, name, artist, album, pic, ... } ] }
+    const list: any[] = rawData.child || rawData.data?.child || []
+    if (list.length === 0) throw new Error(`qukudata 返回空列表 (node=${bangid})`)
+
+    const decodeName = (str: string) => {
+      try { return decodeURIComponent(escape(str)) } catch { return str }
+    }
+    return {
+      total: list.length,
+      items: list.map((s: any) => ({
+        id: (s.id || s.musicrid || '').toString().replace(/^MUSIC_/, ''),
+        source: 'kw' as MusicSource,
+        name: decodeName(s.name || s.title || ''),
+        singer: decodeName(s.artist || s.singer || ''),
+        album: decodeName(s.album || ''),
+        albumPic: s.pic || s.albumpic || '',
+        duration: s.duration ? parseInt(s.duration) : undefined,
+      })),
+    }
+  }
+
+  // Web/Electron: use Vite plugin proxy that handles AES encryption
   const resp = await platformFetch(`/api/kw-board/songs?id=${bangid}&page=${page}&limit=${limit}`)
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
   const rawData = await resp.json()

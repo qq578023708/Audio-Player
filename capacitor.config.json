@@ -7,6 +7,9 @@
     "cleartext": true
   },
   "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    },
     "Keyboard": {
       "resize": "body",
       "resizeOnFullScreen": true
@@ -27,3 +30,4 @@
     "allowMixedContent": true
   }
 }
+
