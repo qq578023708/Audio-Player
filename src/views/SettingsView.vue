@@ -170,7 +170,53 @@
             </button>
           </div>
         </div>
+
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label">查看日志</div>
+            <div class="setting-desc">在应用内查看控制台日志</div>
+          </div>
+          <div class="setting-control">
+            <button class="devtools-btn" @click="showLogPanel = true">
+              <SvgIcon name="file-text" :size="14" />
+              查看日志
+            </button>
+          </div>
+        </div>
       </section>
+
+      <!-- Log Panel Modal -->
+      <div class="log-panel-overlay" v-if="showLogPanel" @click.self="showLogPanel = false">
+        <div class="log-panel">
+          <div class="log-panel-header">
+            <h3>应用日志</h3>
+            <div class="log-panel-actions">
+              <button class="icon-btn" @click="copyLogs" title="复制">
+                <SvgIcon name="copy" :size="16" />
+              </button>
+              <button class="icon-btn" @click="clearLogs" title="清空">
+                <SvgIcon name="trash" :size="16" />
+              </button>
+              <button class="icon-btn" @click="showLogPanel = false" title="关闭">
+                <SvgIcon name="x" :size="16" />
+              </button>
+            </div>
+          </div>
+          <div class="log-panel-content" ref="logContent">
+            <div v-if="logs.length === 0" class="log-empty">暂无日志</div>
+            <div
+              v-for="(log, i) in logs"
+              :key="i"
+              class="log-line"
+              :class="log.level"
+            >
+              <span class="log-time">{{ formatLogTime(log.timestamp) }}</span>
+              <span class="log-level">{{ log.level }}</span>
+              <span class="log-message">{{ log.message }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- About Section -->
       <section class="settings-section">
@@ -225,10 +271,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import SvgIcon from '@/components/SvgIcon.vue'
 import { useSettingsStore } from '@/stores/settings'
+import { getLogs, clearLogs as clearLoggerLogs, exportLogs, type LogEntry } from '@/services/logger'
 
 defineOptions({
   name: 'settings'
@@ -240,6 +287,9 @@ const settingsStore = useSettingsStore()
 // State
 const settings = settingsStore.settings
 const showResetConfirm = ref(false)
+const showLogPanel = ref(false)
+const logs = ref<LogEntry[]>([])
+const logContent = ref<HTMLElement | null>(null)
 
 // Computed
 const isElectron = computed(() => settingsStore.isElectron)
@@ -279,9 +329,52 @@ function openRemoteDebug() {
   const instructions = platform === 'android'
     ? 'Android 远程调试步骤：\n\n1. 用 USB 连接手机到电脑\n2. 在电脑 Chrome 地址栏输入：chrome://inspect\n3. 找到 "AudioFlow Player" 并点击 "inspect"\n\n确保手机已开启 USB 调试模式。'
     : 'iOS 远程调试步骤：\n\n1. 用 USB 连接设备到 Mac\n2. 在 Mac Safari 中：开发 > [设备名] > AudioFlow Player\n\n确保设备已开启 Web 检查器。'
-  
+
   alert(instructions)
 }
+
+function refreshLogs() {
+  logs.value = getLogs()
+  nextTick(() => {
+    if (logContent.value) {
+      logContent.value.scrollTop = logContent.value.scrollHeight
+    }
+  })
+}
+
+function copyLogs() {
+  const text = exportLogs()
+  navigator.clipboard.writeText(text).then(() => {
+    alert('日志已复制到剪贴板')
+  }).catch(() => {
+    alert('复制失败，请手动复制')
+  })
+}
+
+function clearLogs() {
+  clearLoggerLogs()
+  logs.value = []
+}
+
+function formatLogTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString('zh-CN', { hour12: false })
+}
+
+// Watch for log panel open
+import { watch } from 'vue'
+watch(showLogPanel, (show) => {
+  if (show) {
+    refreshLogs()
+    // Auto-refresh every 2 seconds while panel is open
+    const interval = setInterval(() => {
+      if (!showLogPanel.value) {
+        clearInterval(interval)
+        return
+      }
+      refreshLogs()
+    }, 2000)
+  }
+})
 
 function goBack() {
   router.back()
@@ -620,6 +713,114 @@ select:focus {
 
 .modal-btns button.danger:hover {
   background: #dc2626;
+}
+
+/* Log Panel */
+.log-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+  padding: 20px;
+}
+
+.log-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  width: 90vw;
+  max-width: 800px;
+  height: 70vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.log-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.log-panel-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.log-panel-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.log-panel-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  background: #0d0d10;
+}
+
+.log-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 40px;
+}
+
+.log-line {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+  word-break: break-all;
+}
+
+.log-time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  width: 64px;
+}
+
+.log-level {
+  flex-shrink: 0;
+  width: 40px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.log-level.log { color: #6b7280; }
+.log-level.info { color: #3b82f6; }
+.log-level.warn { color: #f59e0b; }
+.log-level.error { color: #ef4444; }
+
+.log-message {
+  color: #e5e7eb;
+  white-space: pre-wrap;
 }
 
 @media (max-width: 768px) {

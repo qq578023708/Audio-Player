@@ -4,6 +4,10 @@ import router from './router'
 import App from './App.vue'
 import './style.css'
 import { setupElectronFetchProxy } from './composables/useElectron'
+import { initLogger } from './services/logger'
+
+// Initialize in-app logger (captures console for mobile debugging)
+initLogger()
 
 // Patch fetch for Electron production (proxy /api/ requests through main process)
 setupElectronFetchProxy()

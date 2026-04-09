@@ -2,6 +2,7 @@
   "appId": "com.audioflow.player",
   "appName": "AudioFlow",
   "webDir": "dist",
+  "loggingBehavior": "debug",
   "server": {
     "androidScheme": "https",
     "cleartext": true
