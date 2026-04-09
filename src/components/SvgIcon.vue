@@ -209,6 +209,51 @@
     <template v-else-if="name === 'check'">
       <polyline points="20 6 9 17 4 12" stroke-width="2.5" />
     </template>
+    <template v-else-if="name === 'smartphone'">
+      <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
+      <line x1="12" y1="18" x2="12.01" y2="18" stroke-width="3" />
+    </template>
+    <template v-else-if="name === 'bug'">
+      <path d="M8 2l1.5 1.5" />
+      <path d="M14.5 3.5L16 2" />
+      <path d="M9 7.5C9 6.12 10.12 5 11.5 5h1C13.88 5 15 6.12 15 7.5v.5" />
+      <path d="M6.5 10H4a2 2 0 0 0-2 2v1a6 6 0 0 0 6 6h8a6 6 0 0 0 6-6v-1a2 2 0 0 0-2-2h-2.5" />
+      <path d="M12 14v3" />
+      <path d="M9.5 13H7" />
+      <path d="M17 13h-2.5" />
+      <path d="M6 7l-1.5-1.5" />
+      <path d="M18 7l1.5-1.5" />
+      <path d="M4 17l-2 2" />
+      <path d="M20 17l2 2" />
+    </template>
+    <template v-else-if="name === 'code'">
+      <polyline points="16 18 22 12 16 6" />
+      <polyline points="8 6 2 12 8 18" />
+    </template>
+    <template v-else-if="name === 'monitor'">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </template>
+    <template v-else-if="name === 'info'">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12.01" y2="8" stroke-width="3" />
+    </template>
+    <template v-else-if="name === 'app'">
+      <rect x="2" y="2" width="9" height="9" rx="2" />
+      <rect x="13" y="2" width="9" height="9" rx="2" />
+      <rect x="2" y="13" width="9" height="9" rx="2" />
+      <rect x="13" y="13" width="9" height="9" rx="2" />
+    </template>
+    <template v-else-if="name === 'chevron-left'">
+      <polyline points="15 18 9 12 15 6" />
+    </template>
+    <template v-else-if="name === 'refresh-cw'">
+      <polyline points="23 4 23 10 17 10" />
+      <polyline points="1 20 1 14 7 14" />
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+    </template>
     <!-- Fallback: music note -->
     <template v-else>
       <path d="M9 18V5l12-2v13" />

@@ -92,7 +92,7 @@
           class="nav-item"
           :class="{ active: $route.path === '/source' }"
         >
-          <SvgIcon name="settings" :size="18" />
+          <SvgIcon name="sliders" :size="18" />
           <span>音源管理</span>
         </router-link>
         <router-link
@@ -100,8 +100,8 @@
           class="nav-item"
           :class="{ active: $route.path === '/settings' }"
         >
-          <SvgIcon name="sliders" :size="18" />
-          <span>设置</span>
+          <SvgIcon name="settings" :size="18" />
+          <span>系统设置</span>
         </router-link>
       </div>
 

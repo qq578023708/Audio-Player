@@ -151,6 +151,27 @@
         </div>
       </section>
 
+      <!-- Mobile Debug Section -->
+      <section class="settings-section" v-if="isCapacitor && !isElectron">
+        <h2 class="section-title">
+          <SvgIcon name="smartphone" :size="16" />
+          移动端调试
+        </h2>
+        
+        <div class="setting-item">
+          <div class="setting-info">
+            <div class="setting-label">远程调试</div>
+            <div class="setting-desc">通过电脑 Chrome 检查应用</div>
+          </div>
+          <div class="setting-control">
+            <button class="devtools-btn" @click="openRemoteDebug">
+              <SvgIcon name="bug" :size="14" />
+              开始调试
+            </button>
+          </div>
+        </div>
+      </section>
+
       <!-- About Section -->
       <section class="settings-section">
         <h2 class="section-title">
@@ -222,6 +243,7 @@ const showResetConfirm = ref(false)
 
 // Computed
 const isElectron = computed(() => settingsStore.isElectron)
+const isCapacitor = computed(() => settingsStore.isCapacitor)
 const appVersion = ref('1.0.0')
 
 const platformName = computed(() => {
@@ -249,6 +271,16 @@ function resetSettings() {
 
 function openDevTools() {
   settingsStore.openDevTools()
+}
+
+function openRemoteDebug() {
+  // 显示远程调试指南
+  const platform = (window as any).Capacitor?.getPlatform?.() || 'mobile'
+  const instructions = platform === 'android'
+    ? 'Android 远程调试步骤：\n\n1. 用 USB 连接手机到电脑\n2. 在电脑 Chrome 地址栏输入：chrome://inspect\n3. 找到 "AudioFlow Player" 并点击 "inspect"\n\n确保手机已开启 USB 调试模式。'
+    : 'iOS 远程调试步骤：\n\n1. 用 USB 连接设备到 Mac\n2. 在 Mac Safari 中：开发 > [设备名] > AudioFlow Player\n\n确保设备已开启 Web 检查器。'
+  
+  alert(instructions)
 }
 
 function goBack() {

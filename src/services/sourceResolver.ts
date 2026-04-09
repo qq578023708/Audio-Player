@@ -702,11 +702,12 @@ export async function fetchBoardSongs(
 export async function fetchChartList(
   source: MusicSource,
   _chartType: string = 'hot'
-): Promise<ChartData[]> {
+): Promise<{ charts: ChartData[]; errors: Array<{ board: string; message: string }> }> {
   const boards = ALL_BOARDS[source] || []
   // Load the first 3 boards by default
   const defaultBoards = boards.slice(0, 3)
   const results: ChartData[] = []
+  const errors: Array<{ board: string; message: string }> = []
 
   await Promise.all(
     defaultBoards.map(async (board) => {
@@ -719,14 +720,18 @@ export async function fetchChartList(
             source,
             items: items.slice(0, 50),
           })
+        } else {
+          errors.push({ board: board.name, message: '返回 0 首歌曲' })
         }
-      } catch {
-        // skip individual board failures
+      } catch (e: any) {
+        const msg = e?.message || String(e)
+        console.warn(`[Charts] ${source}/${board.name} failed:`, msg)
+        errors.push({ board: board.name, message: msg })
       }
     })
   )
 
-  return results
+  return { charts: results, errors }
 }
 
 // ===== Board Fetchers (LX Music API addresses) =====
