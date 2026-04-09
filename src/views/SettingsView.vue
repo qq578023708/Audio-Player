@@ -344,8 +344,9 @@ function refreshLogs() {
 
 async function copyLogs() {
   const text = exportLogs()
+  
+  // Method 1: Modern Clipboard API
   try {
-    // Try modern clipboard API first
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text)
       alert('日志已复制到剪贴板')
@@ -355,7 +356,7 @@ async function copyLogs() {
     console.warn('[Settings] Clipboard API failed:', e)
   }
   
-  // Fallback: use Capacitor Clipboard plugin if available
+  // Method 2: Capacitor Clipboard plugin
   const cap = (window as any).Capacitor
   if (cap?.Plugins?.Clipboard) {
     try {
@@ -367,8 +368,26 @@ async function copyLogs() {
     }
   }
   
-  // Final fallback: show share dialog or alert
-  alert('复制失败，请长按日志内容手动复制')
+  // Method 3: Legacy execCommand (works in most WebView contexts)
+  try {
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    const success = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    if (success) {
+      alert('日志已复制到剪贴板')
+      return
+    }
+  } catch (e) {
+    console.warn('[Settings] execCommand copy failed:', e)
+  }
+  
+  // Final fallback: show alert with instructions
+  alert('复制失败，请长按日志内容手动选择并复制')
 }
 
 function clearLogs() {
@@ -805,6 +824,8 @@ select:focus {
   font-size: 11px;
   line-height: 1.5;
   background: var(--bg-tertiary);
+  user-select: text !important;
+  -webkit-user-select: text !important;
 }
 
 .log-empty {
@@ -820,26 +841,26 @@ select:focus {
   word-break: break-all;
 }
 
-.log-time {
+.log-line .log-time {
   flex-shrink: 0;
   color: var(--text-muted);
   width: 64px;
 }
 
-.log-level {
+.log-line .log-level {
   flex-shrink: 0;
   width: 40px;
   text-transform: uppercase;
   font-weight: 600;
 }
 
-/* Log level colors - work in both light/dark themes */
-.log-level.log { color: var(--text-muted); }
-.log-level.info { color: #3b82f6; }
-.log-level.warn { color: #f59e0b; }
-.log-level.error { color: #ef4444; }
+/* Log level colors - explicit hex for visibility */
+.log-line .log-level.log { color: #6b7280; }
+.log-line .log-level.info { color: #3b82f6; }
+.log-line .log-level.warn { color: #f59e0b; }
+.log-line .log-level.error { color: #ef4444; }
 
-.log-message {
+.log-line .log-message {
   color: var(--text-primary);
   white-space: pre-wrap;
 }
