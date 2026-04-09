@@ -181,10 +181,7 @@ async function fetchCharts() {
     const { charts: loaded, errors } = await fetchChartList(activeSource.value, 'hot')
     boardErrors.value = errors
     if (loaded.length === 0) {
-      const detail = errors.length > 0
-        ? errors.map(e => `${e.board}: ${e.message}`).join(' | ')
-        : '网络问题或 CORS 限制'
-      errorMsg.value = `${currentSourceName.value}排行榜加载失败 — ${detail}`
+      errorMsg.value = `${currentSourceName.value}排行榜加载失败`
     } else {
       charts.value = loaded
     }
