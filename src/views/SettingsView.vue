@@ -342,13 +342,33 @@ function refreshLogs() {
   })
 }
 
-function copyLogs() {
+async function copyLogs() {
   const text = exportLogs()
-  navigator.clipboard.writeText(text).then(() => {
-    alert('日志已复制到剪贴板')
-  }).catch(() => {
-    alert('复制失败，请手动复制')
-  })
+  try {
+    // Try modern clipboard API first
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text)
+      alert('日志已复制到剪贴板')
+      return
+    }
+  } catch (e) {
+    console.warn('[Settings] Clipboard API failed:', e)
+  }
+  
+  // Fallback: use Capacitor Clipboard plugin if available
+  const cap = (window as any).Capacitor
+  if (cap?.Plugins?.Clipboard) {
+    try {
+      await cap.Plugins.Clipboard.write({ string: text })
+      alert('日志已复制到剪贴板')
+      return
+    } catch (e) {
+      console.warn('[Settings] Capacitor Clipboard failed:', e)
+    }
+  }
+  
+  // Final fallback: show share dialog or alert
+  alert('复制失败，请长按日志内容手动复制')
 }
 
 function clearLogs() {
@@ -784,7 +804,7 @@ select:focus {
   font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
   font-size: 11px;
   line-height: 1.5;
-  background: #0d0d10;
+  background: var(--bg-tertiary);
 }
 
 .log-empty {
@@ -813,13 +833,14 @@ select:focus {
   font-weight: 600;
 }
 
-.log-level.log { color: #6b7280; }
+/* Log level colors - work in both light/dark themes */
+.log-level.log { color: var(--text-muted); }
 .log-level.info { color: #3b82f6; }
 .log-level.warn { color: #f59e0b; }
 .log-level.error { color: #ef4444; }
 
 .log-message {
-  color: #e5e7eb;
+  color: var(--text-primary);
   white-space: pre-wrap;
 }
 

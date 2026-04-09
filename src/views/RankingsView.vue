@@ -38,33 +38,12 @@
       <SvgIcon name="x" :size="24" />
       <span>{{ errorMsg }}</span>
       <button class="retry-btn" @click="fetchCharts">重试</button>
-      <!-- Debug log: shown when there are board-level errors -->
-      <div class="debug-log" v-if="boardErrors.length > 0">
-        <div class="debug-log-title">调试信息</div>
-        <div class="debug-log-item" v-for="(e, i) in boardErrors" :key="i">
-          <span class="debug-board">{{ e.board }}</span>
-          <span class="debug-msg">{{ e.message }}</span>
-        </div>
-        <div class="debug-log-item debug-env">
-          平台: {{ debugPlatform }} | 协议: {{ debugProtocol }}
-        </div>
-      </div>
     </div>
 
     <!-- Partial load: charts loaded but some boards failed -->
     <div class="warn-bar" v-if="!isLoading && !errorMsg && boardErrors.length > 0">
       <SvgIcon name="alert-circle" :size="14" />
       <span>部分榜单加载失败</span>
-      <button class="debug-toggle" @click="showPartialDebug = !showPartialDebug">{{ showPartialDebug ? '收起' : '详情' }}</button>
-      <div class="debug-log partial" v-if="showPartialDebug">
-        <div class="debug-log-item" v-for="(e, i) in boardErrors" :key="i">
-          <span class="debug-board">{{ e.board }}</span>
-          <span class="debug-msg">{{ e.message }}</span>
-        </div>
-        <div class="debug-log-item debug-env">
-          平台: {{ debugPlatform }} | 协议: {{ debugProtocol }}
-        </div>
-      </div>
     </div>
 
     <!-- Charts -->
@@ -161,15 +140,6 @@ const isLoading = ref(false)
 const errorMsg = ref('')
 const charts = ref<ChartData[]>([])
 const boardErrors = ref<Array<{ board: string; message: string }>>([])
-const showPartialDebug = ref(false)
-
-const debugPlatform = computed(() => {
-  const cap = (window as any).Capacitor
-  if (cap?.isNativePlatform?.()) return `Capacitor/${cap.getPlatform?.() || 'unknown'}`
-  if ((window as any).electronAPI?.isElectron) return 'Electron'
-  return 'Web'
-})
-const debugProtocol = computed(() => window.location.protocol)
 
 const hasNoPlugins = computed(() => sourceStore.enabledPlugins.length === 0)
 
@@ -212,7 +182,6 @@ async function fetchCharts() {
   errorMsg.value = ''
   charts.value = []
   boardErrors.value = []
-  showPartialDebug.value = false
 
   try {
     const { charts: loaded, errors } = await fetchChartList(activeSource.value, 'hot')
@@ -389,56 +358,6 @@ onMounted(() => {
   background: var(--accent-hover);
 }
 
-/* Debug log */
-.debug-log {
-  margin-top: 12px;
-  width: 100%;
-  max-width: 480px;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid rgba(255,255,255,0.1);
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-  font-size: 11px;
-  font-family: monospace;
-  text-align: left;
-  color: var(--text-secondary);
-}
-
-.debug-log-title {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
-
-.debug-log-item {
-  display: flex;
-  gap: 8px;
-  padding: 3px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
-  word-break: break-all;
-  line-height: 1.4;
-}
-
-.debug-board {
-  flex-shrink: 0;
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.debug-msg {
-  color: var(--danger);
-}
-
-.debug-env {
-  color: var(--text-muted);
-  font-size: 10px;
-  border-bottom: none;
-  margin-top: 4px;
-}
-
 /* Partial load warning bar */
 .warn-bar {
   display: flex;
@@ -461,22 +380,6 @@ onMounted(() => {
 
 .warn-bar span {
   flex: 1;
-}
-
-.debug-toggle {
-  font-size: 12px;
-  color: #f59e0b;
-  text-decoration: underline;
-  cursor: pointer;
-  background: none;
-  border: none;
-  padding: 0;
-}
-
-.warn-bar .debug-log.partial {
-  width: 100%;
-  margin-top: 8px;
-  background: rgba(0,0,0,0.2);
 }
 
 .chart-section {
