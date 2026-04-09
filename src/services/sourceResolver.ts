@@ -745,11 +745,15 @@ async function fetchKwBoard(bangid: string, page: number, limit: number): Promis
   if (isCapacitor()) {
     // Direct public API — no AES encryption, works on mobile
     // Use kuwo.cn's public leaderboard API (same endpoint as their web player)
+    // Note: kuwo API requires a CSRF token (kw_token) in cookie
+    const csrfToken = Math.random().toString(36).substring(2, 15)
     const resp = await fetch(
-      `http://wapi.kuwo.cn/api/www/bang/bang/musicList?bangId=${bangid}&pn=${page - 1}&rn=${limit}&httpsStatus=1`,
+      `https://kuwo.cn/api/www/bang/bang/musicList?bangId=${bangid}&pn=${page}&rn=${limit}&httpsStatus=1`,
       {
         headers: {
-          'Referer': 'http://www.kuwo.cn/',
+          'Referer': 'https://kuwo.cn/',
+          'Cookie': `kw_token=${csrfToken}`,
+          'csrf': csrfToken,
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
       }
@@ -757,9 +761,9 @@ async function fetchKwBoard(bangid: string, page: number, limit: number): Promis
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     const rawData = await resp.json()
 
-    // Response shape: { data: { musicList: [ { rid, name, artist, album, pic, ... } ] } }
+    // Response shape: { data: { musicList: [ { rid, name, artist, album, pic, ... } ], num, total } }
     const list: any[] = rawData.data?.musicList || []
-    if (list.length === 0) throw new Error(`kuwo 返回空列表 (bangId=${bangid})`)
+    if (list.length === 0) throw new Error(`kuwo 返回空列表 (bangId=${bangid}, msg=${rawData.msg || 'unknown'})`)
 
     const decodeName = (str: string) => {
       try { return decodeURIComponent(escape(str)) } catch { return str }
