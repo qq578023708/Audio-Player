@@ -42,17 +42,20 @@
         </div>
 
         <div v-else class="file-upload">
+          <!-- accept="*/*" so Android file browser shows ALL files (including .js).
+               Filtering to ".js,.txt" causes most Android file pickers to hide .js files
+               because Android treats them as potentially dangerous content. -->
           <input
             ref="fileInput"
             type="file"
-            accept=".js,.txt"
+            accept="*/*"
             style="display:none"
             @change="onFileSelect"
           />
           <button class="upload-area" @click="fileInput?.click()">
             <SvgIcon name="folder" :size="24" />
             <span>点击选择 .js 音源文件</span>
-            <span class="upload-hint">或从 D:\Downloads\lxmusic-source-main\ 选择</span>
+            <span class="upload-hint">支持 .js / .txt 格式，安卓如看不到文件请切换到"所有文件"视图</span>
           </button>
         </div>
       </div>
@@ -278,14 +281,26 @@ function onFileSelect(event: Event) {
   const file = input.files?.[0]
   if (!file) return
 
+  // Basic size guard: LX source scripts are rarely > 5 MB
+  if (file.size > 5 * 1024 * 1024) {
+    importMsg.value = { type: 'error', text: `文件过大 (${(file.size / 1024 / 1024).toFixed(1)} MB)，音源插件通常不超过 5 MB` }
+    input.value = ''
+    return
+  }
+
   const reader = new FileReader()
   reader.onload = (e) => {
     const code = e.target?.result as string
+    // Guard against binary files (e.g. images or APKs selected by mistake)
+    if (code.includes('\0') || !/[\s\S]{10}/.test(code)) {
+      importMsg.value = { type: 'error', text: '所选文件不是文本文件，请选择 .js 格式的音源插件' }
+      return
+    }
     sourceCode.value = code
     importMethod.value = 'paste'
     setTimeout(() => importFromCode(), 100)
   }
-  reader.readAsText(file)
+  reader.readAsText(file, 'utf-8')
   input.value = ''
 }
 
